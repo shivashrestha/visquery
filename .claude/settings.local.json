@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"d:\\\\dev\\\\visquery\\\\ml\\\\training\\\\checkpoints\" -Recurse -Force | Where-Object {$_.PSIsContainer -eq $false} | Select-Object FullName, @{Name='Size\\(MB\\)'; Expression={[math]::Round\\($_.Length/1MB,2\\)}} | Format-Table -AutoSize)"
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.env
+*.env
+
+# ML / data
+ml/checkpoints/
+ml/data/pairs/*.jsonl
+ml/data/images/
+*.pt
+*.pth
+*.bin
+*.safetensors
+wandb/
+
+# FAISS indexes
+data/faiss/
+*.index
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Eval results (large JSON)
+eval/results/*.json
+
+# Scrapy
+scraper/*.jsonl
+scraper/*.jl
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Postgres data
+postgres_data/
+
+#train data
+fine-tune/arch-datasets
+fine-tune/checkpoints/best_clip_model.pt
+
+# raw data

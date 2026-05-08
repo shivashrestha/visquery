@@ -1,0 +1,28 @@
+{env.DOMAIN} {
+    reverse_proxy fastapi:8000 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+    }
+
+    # Serve images directly from disk for efficiency when object storage is local.
+    # Comment out if using a remote object storage URL instead.
+    # handle /images/* {
+    #     root * /data/images
+    #     file_server
+    # }
+
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+
+    encode gzip
+
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+}
