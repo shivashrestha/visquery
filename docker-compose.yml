@@ -6,7 +6,7 @@ services:
     env_file:
       - ${DOCKER_ENV_FILE:-.env}
     ports:
-      - "127.0.0.1:8000:8000"
+      - "18001:8000"
     volumes:
       - ${STORAGE_ROOT:-./storage}:/data
       - ./ml/checkpoints:/data/checkpoints:ro
