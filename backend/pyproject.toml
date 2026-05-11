@@ -17,7 +17,6 @@ dependencies = [
     "redis>=5.0.3",
     "rq>=1.16.2",
     "open-clip-torch>=2.24.0",
-    # torch is declared without CUDA extras so pip pulls CPU-only wheels
     "torch>=2.2.0",
     "torchvision>=0.17.0",
     "faiss-cpu>=1.8.0",

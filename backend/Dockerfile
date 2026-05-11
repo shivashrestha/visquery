@@ -16,6 +16,9 @@ RUN useradd -m -u 10001 appuser
 COPY pyproject.toml .
 
 RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+        torch torchvision \
+        --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir .
 
 COPY app/ ./app/
