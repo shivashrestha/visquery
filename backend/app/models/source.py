@@ -6,8 +6,8 @@ from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import ARRAY, TIMESTAMP, Column, Date, Integer, Text, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import ARRAY, TIMESTAMP, Boolean, Column, Date, Integer, Text, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.models.building import Base
 
@@ -44,6 +44,10 @@ class Image(Base):
     license_url = Column(Text, nullable=True)
     source_id = Column(UUID(as_uuid=True), nullable=True)  # FK set at DB level
     embedding_version = Column(Text, nullable=False, default="base")
+    metadata_json = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    tags = Column(ARRAY(Text), nullable=False, server_default=text("'{}'::text[]"))
+    ingest_status = Column(Text, nullable=False, server_default=text("'embedded'"))
+    metadata_ready = Column(Boolean, nullable=False, server_default=text("false"))
     created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
 
 
@@ -77,6 +81,10 @@ class ImageRead(BaseModel):
     license_url: Optional[str] = None
     source_id: Optional[uuid.UUID] = None
     embedding_version: str
+    metadata_json: dict
+    tags: list[str]
+    ingest_status: str
+    metadata_ready: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}

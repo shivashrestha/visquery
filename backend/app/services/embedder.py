@@ -1,13 +1,15 @@
 """CLIP ViT-B/32 embedding service.
 
-Singleton, lazily loaded on first use. Supports base open_clip weights and a
-LoRA-merged checkpoint produced by ml/training/lora_clip.py.
+Singleton, loaded eagerly at startup via warmup(). Supports base open_clip
+weights and a LoRA-merged checkpoint produced by ml/training/lora_clip.py.
 
-CPU inference only — designed for a 6 GB RAM VPS. Do not import torch at module
-level to keep the API worker startup fast; import inside the lazy initializer.
+CPU inference only — designed for a 6 GB RAM VPS. All inference runs through
+a dedicated ThreadPoolExecutor (CLIP_EXECUTOR) to avoid contention with the
+default asyncio executor used for I/O.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import threading
 from pathlib import Path
 from typing import Union
@@ -21,6 +23,10 @@ _lock = threading.Lock()
 _model = None
 _preprocess = None
 _tokenizer = None
+
+# Dedicated executor so CLIP inference never competes with DB/I/O threads.
+# max_workers=2 allows two concurrent inferences without over-subscribing CPU.
+CLIP_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="clip")
 
 
 def _load() -> None:
@@ -48,9 +54,9 @@ def _load() -> None:
             path = Path(settings.clip_checkpoint_path)
             if not path.exists():
                 raise FileNotFoundError(f"CLIP checkpoint not found: {path}")
-            state = torch.load(path, map_location="cpu")
-            # Handle both raw state dicts and checkpoints with a "model" key
-            state_dict = state.get("model", state)
+            state = torch.load(path, map_location="cpu", weights_only=False)
+            # Checkpoint may use "model_state_dict" (training script) or "model" key
+            state_dict = state.get("model_state_dict", state.get("model", state))
             model.load_state_dict(state_dict, strict=False)
             log.info("embedder_custom_checkpoint_loaded")
 
@@ -60,6 +66,17 @@ def _load() -> None:
         _preprocess = preprocess
         _tokenizer = open_clip.get_tokenizer("ViT-B-32")
         log.info("embedder_ready")
+
+
+def warmup() -> None:
+    """Load model weights and run a dummy inference to warm JIT caches."""
+    _load()
+    import torch
+
+    dummy = _tokenizer(["warmup"])
+    with torch.no_grad():
+        _model.encode_text(dummy)
+    logger.info("embedder_warmup_complete")
 
 
 def embed_text(text: str) -> np.ndarray:

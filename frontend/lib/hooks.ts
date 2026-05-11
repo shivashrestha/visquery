@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { SearchResponse, FilterState } from './types';
-import { search } from './api';
+import { search, searchByImage } from './api';
 import type { SearchRequest } from './types';
 
 export function useDebounce<T>(value: T, delay: number): T {
@@ -32,7 +32,7 @@ function filtersToSearchFilters(
   }
   if (filters.typology.length > 0) f.typology = filters.typology;
   if (filters.material.length > 0) f.material = filters.material;
-  if (filters.location_country) f.location_country = filters.location_country;
+  if (filters.location_country) f.country = filters.location_country;
   return f;
 }
 
@@ -121,6 +121,24 @@ export function useSearch() {
     [hasSearched, query, imageId, runSearch],
   );
 
+  const submitByImage = useCallback(async (file: File) => {
+    setQuery('');
+    setImageId(undefined);
+    setPage(1);
+    setResults(null);
+    setLoading(true);
+    setError(null);
+    setHasSearched(true);
+    try {
+      const response = await searchByImage(file);
+      setResults(response);
+    } catch (err) {
+      if (err instanceof Error) setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const clearSearch = useCallback(() => {
     setQuery('');
     setImageId(undefined);
@@ -148,6 +166,7 @@ export function useSearch() {
     hasSearched,
     page,
     submit,
+    submitByImage,
     loadMore,
     updateFilters,
     clearSearch,

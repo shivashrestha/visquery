@@ -6,6 +6,7 @@ only the LLM outputs vary. No autonomous tool use.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -36,7 +37,6 @@ def route(query: str) -> dict[str, Any]:
         result = llm_client.complete_json(
             system=system,
             user=user,
-            model_override="claude-haiku-4-5",
             temperature=0.0,
         )
         intent = result.get("intent", "concept_search")
@@ -106,5 +106,7 @@ def synthesize(query: str, results: list[dict[str, Any]]) -> list[str]:
         except Exception as exc:
             logger.warning("synthesizer_failed_for_result", error=str(exc))
             explanations.append("")
+        else:
+            time.sleep(0.5)
 
     return explanations

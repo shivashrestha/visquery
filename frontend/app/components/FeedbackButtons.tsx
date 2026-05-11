@@ -6,7 +6,7 @@ import { submitFeedback } from '@/lib/api';
 
 interface FeedbackButtonsProps {
   imageId: string;
-  buildingId: string;
+  buildingId?: string;
   query: string;
   currentRating?: 'up' | 'down';
   onRatingChange?: (imageId: string, rating: 'up' | 'down') => void;
@@ -32,7 +32,7 @@ export default function FeedbackButtons({
 
       setSubmitting(true);
       try {
-        await submitFeedback({ imageId, buildingId, query, rating });
+        await submitFeedback({ image_id: imageId, building_id: buildingId, query, rating });
         onRatingChange?.(imageId, rating);
         if (rating === 'down') setShowReason(true);
       } catch {
@@ -52,8 +52,8 @@ export default function FeedbackButtons({
       }
       try {
         await submitFeedback({
-          imageId,
-          buildingId,
+          image_id: imageId,
+          building_id: buildingId,
           query,
           rating: 'down',
           reason,

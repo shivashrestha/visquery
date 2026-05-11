@@ -13,15 +13,15 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Database
-    database_url: str = "postgresql://visquery:changeme@localhost:5432/visquery"
+    # Database — set in .env
+    database_url: str = ""
 
-    # Redis / RQ
-    redis_url: str = "redis://localhost:6379/0"
+    # Redis / RQ — set in .env
+    redis_url: str = ""
 
-    # Object storage (S3-compatible)
-    object_storage_url: str = "https://s3.us-east-005.backblazeb2.com"
-    object_storage_bucket: str = "visquery-images"
+    # Object storage (S3-compatible) — set in .env
+    object_storage_url: str = ""
+    object_storage_bucket: str = ""
     object_storage_key_id: str = ""
     object_storage_application_key: str = ""
 
@@ -33,15 +33,17 @@ class Settings(BaseSettings):
     # Reranker
     reranker_model: str = "BAAI/bge-reranker-base"
 
-    # LLM
-    llm_provider: Literal["anthropic", "ollama"] = "ollama"
-    anthropic_api_key: str = ""
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.1:8b"
+    # LLM (Ollama cloud) — set in .env
+    ollama_base_url: str = ""
+    ollama_vlm_model: str = ""   # vision model for image captioning
+    ollama_model: str = ""       # text LLM fallback (used if rag_llm_model not set)
+    rag_llm_model: str = ""      # text LLM for router/rewriter/synthesizer
+    ollama_api_key: str = ""
 
-    # FAISS
-    faiss_data_dir: str = "/data/faiss"
-    embedding_version: str = "base"
+    # Storage paths — defaults match Docker volume mount at /data
+    faiss_data_dir: str = "/data/vectors"
+    storage_root: str = "/data"
+    embedding_version: str = "2"
 
     # Retrieval defaults
     mmr_lambda: float = 0.7

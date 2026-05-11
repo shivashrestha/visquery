@@ -1,119 +1,161 @@
 'use client';
 
-import { useState } from 'react';
 import Image from 'next/image';
+import { motion } from 'framer-motion';
+import { Heart } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
-import FeedbackButtons from './FeedbackButtons';
 
 interface BuildingCardProps {
   result: SearchResultItem;
   onClick: (result: SearchResultItem) => void;
-  query: string;
-  currentRating?: 'up' | 'down';
-  onRatingChange?: (imageId: string, rating: 'up' | 'down') => void;
+  onFav?: (result: SearchResultItem) => void;
+  fav?: boolean;
+  queryTerms?: string[];
+  index?: number;
+  compact?: boolean;
 }
 
-function LicenseBadge({ license }: { license: string }) {
-  return (
-    <span className="text-2xs font-medium text-muted/70 bg-black/5 px-1 py-0.5 rounded uppercase tracking-wide">
-      {license.replace(/_/g, ' ')}
-    </span>
-  );
+/** Derive a pseudo-photo motif from metadata */
+function getMotif(result: SearchResultItem): string {
+  const mat = result.metadata.materials?.[0]?.toLowerCase() ?? '';
+  const typ = result.metadata.typology?.[0]?.toLowerCase() ?? '';
+  const tags = (result.tags ?? []).map((t) => t.toLowerCase());
+  if (mat === 'timber') return 'timber-vault';
+  if (mat === 'glass') return 'glass-box';
+  if (mat === 'brick') return 'brick-grid';
+  if (mat === 'steel') return 'industrial';
+  if (mat === 'earth') return 'thick-wall';
+  if (tags.some((t) => t.includes('cantilever') || t.includes('floating'))) return 'cantilever';
+  if (tags.some((t) => t.includes('courtyard') || t.includes('patio'))) return 'courtyard';
+  if (tags.some((t) => t.includes('curved') || t.includes('curve'))) return 'curve';
+  if (typ.includes('religious') || typ.includes('chapel')) return 'thick-wall';
+  return 'thick-wall';
+}
+
+const MATERIAL_PALETTES: Record<string, [string, string, string]> = {
+  concrete:  ['#c4c1b8', '#6f6a60', '#1f1d18'],
+  brick:     ['#c79775', '#7d4a2f', '#2a1812'],
+  timber:    ['#e6dcc6', '#b08a52', '#3a2d1c'],
+  stone:     ['#d8cdb8', '#8a7458', '#403426'],
+  glass:     ['#cbd0c9', '#5d6862', '#1a1f1c'],
+  steel:     ['#bcbab2', '#4d4a44', '#15140f'],
+  earth:     ['#e3c79c', '#a06d3c', '#3a2110'],
+};
+
+function getColors(result: SearchResultItem): [string, string, string] {
+  const mat = result.metadata.materials?.[0]?.toLowerCase() ?? '';
+  return MATERIAL_PALETTES[mat] ?? ['#d4d0c8', '#7a7268', '#252218'];
 }
 
 export default function BuildingCard({
   result,
   onClick,
-  query,
-  currentRating,
-  onRatingChange,
+  onFav,
+  fav = false,
+  queryTerms = [],
+  index = 0,
+  compact = false,
 }: BuildingCardProps) {
-  const [hovered, setHovered] = useState(false);
-  const { metadata, source, image_url, explanation } = result;
+  const { metadata, source, explanation } = result;
+  const motif = getMotif(result);
+  const [c1, c2, c3] = getColors(result);
 
-  const name =
-    metadata.architect
-      ? `${metadata.architect}`
-      : 'Unknown architect';
-
-  const yearStr = metadata.year_built ? String(metadata.year_built) : '';
-  const locationStr = [metadata.location_city, metadata.location_country]
-    .filter(Boolean)
-    .join(', ');
-
-  const subtitle = [name, yearStr, locationStr].filter(Boolean).join(' · ');
+  const matchTags = (result.tags ?? []).filter((t) =>
+    queryTerms.some((q) => q && t.toLowerCase().includes(q.toLowerCase())),
+  );
 
   return (
-    <div
-      className="break-inside-avoid mb-4 bg-white border border-border rounded-sm overflow-hidden cursor-pointer group relative"
+    <motion.article
+      className="card"
       onClick={() => onClick(result)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick(result);
-        }
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8, transition: { duration: 0.18 } }}
+      transition={{
+        duration: 0.45,
+        delay: Math.min(index * 0.04, 0.36),
+        ease: [0.22, 0.61, 0.36, 1],
       }}
-      aria-label={`View ${metadata.architect ?? 'building'} details`}
     >
-      <div className="relative overflow-hidden bg-surface">
-        <Image
-          src={image_url}
-          alt={metadata.architect ?? 'Building'}
-          width={600}
-          height={400}
-          className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-[1.02]"
-          loading="lazy"
-          placeholder="blur"
-          blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN8/+F9PQAI8wNPvd7POQAAAABJRU5ErkJggg=="
-          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = 'none';
-          }}
-        />
-
-        <div
-          className={[
-            'absolute top-2 right-2 transition-opacity duration-150',
-            hovered ? 'opacity-100' : 'opacity-0',
-          ].join(' ')}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <FeedbackButtons
-            imageId={result.image_id}
-            buildingId={result.building_id}
-            query={query}
-            currentRating={currentRating}
-            onRatingChange={onRatingChange}
-            compact
+      <div className="card-img">
+        {result.image_url ? (
+          <Image
+            src={result.image_url}
+            alt={metadata.architect ?? 'Building'}
+            fill
+            className="object-cover"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            loading="lazy"
+            placeholder="blur"
+            blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN8/+F9PQAI8wNPvd7POQAAAABJRU5ErkJggg=="
+            onError={(e) => {
+              const el = e.currentTarget as HTMLImageElement;
+              el.style.display = 'none';
+            }}
           />
-        </div>
+        ) : (
+          <div
+            className={`pp ${motif}`}
+            style={
+              { '--c1': c1, '--c2': c2, '--c3': c3 } as React.CSSProperties
+            }
+          >
+            {source.title && <span className="pp-caption">{source.title}</span>}
+          </div>
+        )}
+
+        {onFav && (
+          <motion.button
+            className={`card-fav${fav ? ' on' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFav(result);
+            }}
+            whileTap={{ scale: 0.85 }}
+            animate={fav ? { scale: [1, 1.28, 1] } : { scale: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Heart size={13} fill={fav ? 'currentColor' : 'none'} />
+          </motion.button>
+        )}
       </div>
 
-      <div className="px-3 pt-2.5 pb-3">
-        <h3 className="font-serif text-base text-near-black leading-snug mb-0.5">
-          {metadata.architect ?? 'Unknown architect'}
-        </h3>
-        <p className="text-xs text-muted mb-1.5">{subtitle}</p>
-        {explanation && (
-          <p className="text-xs text-near-black/70 leading-relaxed line-clamp-2">
-            {explanation}
-          </p>
+      <div className="card-meta-1">
+        {(source.title || metadata.architect) && (
+          <h3 className="card-title">{source.title || metadata.architect}</h3>
         )}
-        <div className="flex items-center justify-between mt-2">
-          {metadata.typology && metadata.typology.length > 0 && (
-            <span className="text-2xs text-muted capitalize">
-              {metadata.typology[0].replace(/_/g, ' ')}
-            </span>
-          )}
-          <div className="ml-auto">
-            <LicenseBadge license={source.license} />
-          </div>
-        </div>
+        {metadata.year_built && (
+          <span className="card-year">{metadata.year_built}</span>
+        )}
       </div>
-    </div>
+
+      {(metadata.architect || metadata.location_country) && (
+        <p className="card-sub">
+          {[
+            metadata.architect,
+            [metadata.location_city, metadata.location_country]
+              .filter(Boolean)
+              .join(', '),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+      )}
+
+      {!compact && (explanation || (result.tags && result.tags.length > 0)) && (
+        <div className="card-tags">
+          {result.tags
+            ? result.tags.slice(0, 4).map((t) => (
+                <span
+                  key={t}
+                  className={`card-tag${matchTags.includes(t) ? ' match' : ''}`}
+                >
+                  {t}
+                </span>
+              ))
+            : null}
+        </div>
+      )}
+    </motion.article>
   );
 }

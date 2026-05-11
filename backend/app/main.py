@@ -63,6 +63,13 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
 
+    @app.on_event("startup")
+    async def _warmup_clip() -> None:
+        import asyncio
+        from app.services.embedder import warmup, CLIP_EXECUTOR
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(CLIP_EXECUTOR, warmup)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -74,6 +81,9 @@ def create_app() -> FastAPI:
     # Per-request structured logging context
     @app.middleware("http")
     async def logging_middleware(request: Request, call_next):
+        import traceback
+        from fastapi.responses import JSONResponse
+
         request_id = str(uuid.uuid4())[:8]
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(
@@ -82,7 +92,21 @@ def create_app() -> FastAPI:
             path=request.url.path,
         )
         t0 = time.perf_counter()
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            logger.error(
+                "request_unhandled_exception",
+                error=str(exc),
+                traceback=traceback.format_exc(),
+                elapsed_ms=elapsed_ms,
+            )
+            return JSONResponse(
+                status_code=500,
+                content={"detail": str(exc)},
+                headers={"X-Request-ID": request_id},
+            )
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
         logger.info(
             "request_complete",
@@ -92,17 +116,17 @@ def create_app() -> FastAPI:
         response.headers["X-Request-ID"] = request_id
         return response
 
-    app.include_router(search.router)
-    app.include_router(images.router)
-    app.include_router(feedback.router)
-    app.include_router(admin.router)
+    app.include_router(search.router, prefix="/api")
+    app.include_router(images.router, prefix="/api")
+    app.include_router(feedback.router, prefix="/api")
+    app.include_router(admin.router, prefix="/api")
 
     from fastapi import Depends, HTTPException
     from app.deps import get_db
     from app.models.building import Building, BuildingRead
     from sqlalchemy.orm import Session
 
-    @app.get("/buildings/{building_id}", response_model=BuildingRead)
+    @app.get("/api/buildings/{building_id}", response_model=BuildingRead)
     async def get_building(
         building_id: uuid.UUID,
         db: Session = Depends(get_db),

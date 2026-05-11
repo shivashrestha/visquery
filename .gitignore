@@ -55,9 +55,16 @@ Thumbs.db
 
 # Postgres data
 postgres_data/
+storage/postgres/
 
 #train data
-fine-tune/arch-datasets
-fine-tune/checkpoints/best_clip_model.pt
-
+ml/arch-datasets
+ml/checkpoints/best_clip_model.pt
+ml/test-data
 # raw data
+
+.claude
+storage/
+.env.docker.dev
+.env.docker.dev.example
+.env.example

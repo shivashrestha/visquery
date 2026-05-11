@@ -7,7 +7,6 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 from sqlalchemy import (
-    ARRAY,
     TIMESTAMP,
     Column,
     Double,
@@ -15,7 +14,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import DeclarativeBase
 
 

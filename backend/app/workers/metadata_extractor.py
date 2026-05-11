@@ -22,6 +22,9 @@ _VOCAB_DIR = Path(__file__).parent.parent / "vocabularies"
 
 def _load_vocab(name: str) -> list[str]:
     path = _VOCAB_DIR / f"{name}.yaml"
+    if not path.exists():
+        logger.warning("vocab_file_missing", vocab=name)
+        return []
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return data if isinstance(data, list) else list(data)
 
