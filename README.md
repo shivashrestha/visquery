@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/badge/FAISS-IndexFlatIP-orange" />
     <img src="https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white" />
     <img src="https://img.shields.io/badge/License-MIT-green" />
-    <img src="https://img.shields.io/badge/live-visquery.com-informational?logo=vercel&logoColor=white" />
+    <img src="https://img.shields.io/badge/visquery.com-informational?logo=vercel&logoColor=white" />
   </p>
   <p><a href="https://visquery.com">visquery.com</a></p>
 </div>
@@ -90,14 +90,14 @@ Image + metadata (Postgres: sources + images)
 
 ## 🤖 CLIP Fine-tuning
 
-The retrieval embedder is a two-stage LoRA-style fine-tune of **OpenCLIP ViT-B/32** on 25 architectural style classes sourced from Wikimedia Commons (CC-licensed). The full notebook is at [`ml/finetune_clip_production_v2.ipynb`](ml/finetune_clip_production_v2.ipynb).
+The retrieval embedder is a two-stage LoRA-style fine-tune of **OpenCLIP ViT-B/32** on 24 architectural style classes sourced from Wikimedia Commons (CC-licensed). The full notebook is at [`ml/finetune_clip_production_v2.ipynb`](ml/finetune_clip_production_v2.ipynb).
 
 ### Dataset
 
 | Split | Samples | Classes |
 |-------|---------|---------|
-| Train | 7 018 | 25 |
-| Val | 485 | 25 |
+| Train | 7 018 | 24 |
+| Val | 485 | 24 |
 
 - **Min class size**: 122 images (before oversampling)
 - **Oversampling**: each class upsampled to 280 with replacement; each copy gets independent augmentation → genuine variety, no duplicate gradients
@@ -105,7 +105,7 @@ The retrieval embedder is a two-stage LoRA-style fine-tune of **OpenCLIP ViT-B/3
 - **Multi-prompt training**: 5 text prompts per class, one sampled randomly each step
 - **Hard-negative batching**: ~50% of each mini-batch drawn from the hardest confusion clusters (Gothic/Romanesque, Greek Revival/Colonial/Georgian, Queen Anne/Tudor/Edwardian, etc.)
 
-**25 architectural style classes:**
+**24 architectural style classes:**
 
 > Achaemenid · American Craftsman · American Foursquare · Ancient Egyptian · Art Deco · Art Nouveau · Baroque · Bauhaus · Beaux-Arts · Byzantine · Chicago School · Colonial · Deconstructivism · Edwardian · Georgian · Gothic · Greek Revival · International Style · Novelty · Palladian · Queen Anne · Romanesque · Russian Revival · Tudor Revival _(+ more in training set)_
 
@@ -367,13 +367,13 @@ backend/                    FastAPI app, retrieval pipeline, ingestion workers
 scraper/                    Scrapy spiders (use manual loading for now)
 ml/                         Fine-tuning notebook, training data, checkpoints
   finetune_clip_production_v2.ipynb   Main training notebook
-  arch-datasets/            25 class image folders
+  arch-datasets/            24 class image folders
   checkpoints/
     best_clip_v2.pt         Best model weights (epoch 12)
     clip_visual_fp32.onnx   Production visual encoder (FP32)
     clip_visual_int8.onnx   Production visual encoder (INT8 quantised)
     artifacts/
-      clip_artifacts.pkl    Cached text embeddings for all 25 classes
+      clip_artifacts.pkl    Cached text embeddings for all 24 classes
       viz/                  Training visualisations (scorecard, confusion, F1, calibration)
 frontend/                   Next.js app
   app/                      App router pages
@@ -423,17 +423,17 @@ Key environment variables (see `.env.example` for full list):
 
 ## 📊 Evaluation
 
-Seven retrieval configurations compared against architect-curated queries (nDCG@30 headline metric):
+Six retrieval configurations compared against architect-curated queries:
 
-| Config | Embedder | Filters | Rerank | Rewrite | MMR | nDCG@30 |
-|--------|----------|---------|--------|---------|-----|---------|
-| `baseline` | base CLIP | | | | | - |
-| `clip_filters` | base CLIP | ✓ | | | | - |
-| `clip_rerank` | base CLIP | ✓ | ✓ | | | - |
-| `tuned_clip` | LoRA-tuned | ✓ | | | | - |
-| `tuned_rerank` | LoRA-tuned | ✓ | ✓ | | | - |
-| `full_no_mmr` | LoRA-tuned | ✓ | ✓ | ✓ | | - |
-| `full` | LoRA-tuned | ✓ | ✓ | ✓ | ✓ | - |
+| Config | Embedder | Filters | Rerank | Rewrite | MMR |
+|--------|----------|---------|--------|---------|-----|
+| `baseline` | base CLIP | | | | |
+| `clip_filters` | base CLIP | ✓ | | | |
+| `clip_rerank` | base CLIP | ✓ | ✓ | | |
+| `tuned_clip` | LoRA-tuned | ✓ | | | |
+| `tuned_rerank` | LoRA-tuned | ✓ | ✓ | | |
+| `full_no_mmr` | LoRA-tuned | ✓ | ✓ | ✓ | |
+| `full` | LoRA-tuned | ✓ | ✓ | ✓ | ✓ |
 
 Results populated after evaluation corpus finalised. See `eval/notebook.ipynb`.
 
