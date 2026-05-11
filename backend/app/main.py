@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import time
+import traceback
 import uuid
+from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request, Response
@@ -18,10 +20,6 @@ from prometheus_client import (
 from app.config import get_settings
 from app.routers import admin, feedback, images, search
 
-# ---------------------------------------------------------------------------
-# Structured logging setup
-# ---------------------------------------------------------------------------
-
 structlog.configure(
     processors=[
         structlog.contextvars.merge_contextvars,
@@ -36,10 +34,6 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-# ---------------------------------------------------------------------------
-# Prometheus metrics
-# ---------------------------------------------------------------------------
-
 SEARCH_REQUESTS = Counter("visquery_search_requests_total", "Total search requests")
 SEARCH_LATENCY = Histogram(
     "visquery_search_latency_ms",
@@ -48,9 +42,15 @@ SEARCH_LATENCY = Histogram(
 )
 CORPUS_SIZE = Gauge("visquery_corpus_images_total", "Number of images in corpus")
 
-# ---------------------------------------------------------------------------
-# App factory
-# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import asyncio
+    from app.services.embedder import warmup, CLIP_EXECUTOR
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(CLIP_EXECUTOR, warmup)
+    yield
+
 
 def create_app() -> FastAPI:
     settings = get_settings()
@@ -59,16 +59,10 @@ def create_app() -> FastAPI:
         title="Visquery",
         description="Architectural precedent search API",
         version="0.1.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url=None,
+        redoc_url=None,
+        lifespan=lifespan,
     )
-
-    @app.on_event("startup")
-    async def _warmup_clip() -> None:
-        import asyncio
-        from app.services.embedder import warmup, CLIP_EXECUTOR
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(CLIP_EXECUTOR, warmup)
 
     app.add_middleware(
         CORSMiddleware,
@@ -78,12 +72,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Per-request structured logging context
     @app.middleware("http")
     async def logging_middleware(request: Request, call_next):
-        import traceback
-        from fastapi.responses import JSONResponse
-
         request_id = str(uuid.uuid4())[:8]
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(
@@ -102,6 +92,7 @@ def create_app() -> FastAPI:
                 traceback=traceback.format_exc(),
                 elapsed_ms=elapsed_ms,
             )
+            from fastapi.responses import JSONResponse
             return JSONResponse(
                 status_code=500,
                 content={"detail": str(exc)},

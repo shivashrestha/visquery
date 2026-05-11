@@ -64,7 +64,12 @@ ml/test-data
 # raw data
 
 .claude
-storage/
+storage/data/checkpoints/*
+storage/faiss/*
+storage/images/*
+storage/postgres/*
+storage/vectors/*
+storage/metadata/*
 .env.docker.dev
 .env.docker.dev.example
 .env.example
