@@ -25,7 +25,7 @@ export default function Header({ view, onNav, resultCount }: HeaderProps) {
             style={{ objectFit: 'contain', flexShrink: 0 }}
           />
           <div className="brand-text">
-            <span className="brand-name">Visquery<span className="dot">.</span></span>
+            <span className="brand-name">Visquery</span>
             <span className="brand-sub">Visual query for architecture styles</span>
           </div>
         </div>
