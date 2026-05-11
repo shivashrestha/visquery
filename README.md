@@ -158,7 +158,7 @@ After training, logit temperature `T` is optimised on the val set to minimise Ex
 
 ### Production scorecard
 
-![Production scorecard](ml/checkpoints/artifacts/viz/01_scorecard.png)
+![Production scorecard](ml/viz/01_scorecard.png)
 
 | Metric | Value | Target | Status |
 |--------|-------|--------|--------|
@@ -184,13 +184,13 @@ Hard-negative discrimination: **pass rate 0.904**, mean cosine margin **0.173**.
 
 ### Confusion matrix
 
-![Confusion matrix](ml/checkpoints/artifacts/viz/02_confusion_matrix.png)
+![Confusion matrix](ml/viz/02_confusion_matrix.png)
 
 Hardest confusions: Baroque ↔ Beaux-Arts, International Style ↔ Bauhaus, Georgian (small val set).
 
 ### Per-class F1 & t-SNE embedding space
 
-![Per-class F1 and t-SNE](ml/checkpoints/artifacts/viz/03_f1_tsne.png)
+![Per-class F1 and t-SNE](ml/viz/03_f1_tsne.png)
 
 **Per-class F1 (val set):**
 
@@ -213,7 +213,7 @@ Georgian low F1 is a val-set size artefact (5 samples). All other classes ≥ 0.
 
 ### Calibration & OOD confidence
 
-![Calibration and OOD](ml/checkpoints/artifacts/viz/04_calibration_ood.png)
+![Calibration and OOD](ml/viz/04_calibration_ood.png)
 
 OOD (noise images) confidence: mean **0.355**, p95 **0.466** — model does not over-confidently assign random images to known classes.
 
