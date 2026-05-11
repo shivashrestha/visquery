@@ -9,7 +9,7 @@ services:
       - "18001:8000"
     volumes:
       - ${STORAGE_ROOT:-./storage}:/data
-      - ./ml/checkpoints:/data/checkpoints:ro
+      - ./storage/data/checkpoints:/data/checkpoints:ro
     depends_on:
       postgres:
         condition: service_healthy
