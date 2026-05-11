@@ -1,9 +1,9 @@
 <div align="center">
   <img src="frontend/public/app-logo.png" alt="Visquery" width="80" />
   <h1>Visquery</h1>
-  <p><strong>Visual precedent search for architects — powered by fine-tuned CLIP and hybrid retrieval.</strong></p>
+  <p><strong>Visual precedent search for architects - powered by fine-tuned CLIP and hybrid retrieval.</strong></p>
   <p>
-    Describe what you're looking for in plain language — <em>a curved corner facade</em>, <em>a thick wall that becomes furniture</em>, <em>a courtyard that mediates between public and private</em> — and Visquery returns 30 strong precedents from open architectural archives with structured metadata, a grounded explanation, and source citations.
+    Describe what you're looking for in plain language - <em>a curved corner facade</em>, <em>a thick wall that becomes furniture</em>, <em>a courtyard that mediates between public and private</em> - and Visquery returns 30 strong precedents from open architectural archives with structured metadata, a grounded explanation, and source citations.
   </p>
   <p>
     <img src="https://img.shields.io/badge/CLIP-ViT--B%2F32-blue?logo=openai&logoColor=white" />
@@ -49,27 +49,27 @@
 
 ```
 User query (text)
-  → Router (Claude Haiku)       — classifies intent: concept / visual / metadata-only / hybrid
-  → Rewriter (llama3.1:8b)      — decomposes into visual sub-queries, extracts hard filters
-  → Filter                       — applies period / typology / material / climate constraints
-  → CLIP FAISS index             — top-100 nearest neighbours per sub-query (ViT-B/32)
-  → RRF Fusion                   — merges ranked lists from multiple sub-queries
-  → Reranker (bge-reranker-base) — cross-encoder rerank against original query
-  → MMR (λ=0.7)                  — diversity reranking to suppress near-duplicates
-  → Synthesizer (mid LLM)        — one-sentence grounded explanation per result
-  → Citation linker              — attaches source URL, license, photographer
-  → Frontend (Next.js)           — result grid with building cards and feedback buttons
+  → Router (Claude Haiku)       - classifies intent: concept / visual / metadata-only / hybrid
+  → Rewriter (llama3.1:8b)      - decomposes into visual sub-queries, extracts hard filters
+  → Filter                       - applies period / typology / material / climate constraints
+  → CLIP FAISS index             - top-100 nearest neighbours per sub-query (ViT-B/32)
+  → RRF Fusion                   - merges ranked lists from multiple sub-queries
+  → Reranker (bge-reranker-base) - cross-encoder rerank against original query
+  → MMR (λ=0.7)                  - diversity reranking to suppress near-duplicates
+  → Synthesizer (mid LLM)        - one-sentence grounded explanation per result
+  → Citation linker              - attaches source URL, license, photographer
+  → Frontend (Next.js)           - result grid with building cards and feedback buttons
 ```
 
 ### Offline ingestion pipeline
 
 ```
 Image + metadata (Postgres: sources + images)
-  → Captioner worker        — vision LLM generates structured caption JSON
-  → Embedder                — CLIP ViT-B/32 → 512-d vector
-  → FAISS indexer           — appends to IndexFlatIP, persists id_map
-  → Metadata extractor      — LLM extracts building entity (name, architect, year, typology…)
-  → Building entity upsert  — Postgres: buildings table
+  → Captioner worker        - vision LLM generates structured caption JSON
+  → Embedder                - CLIP ViT-B/32 → 512-d vector
+  → FAISS indexer           - appends to IndexFlatIP, persists id_map
+  → Metadata extractor      - LLM extracts building entity (name, architect, year, typology…)
+  → Building entity upsert  - Postgres: buildings table
 ```
 
 ### Retrieval pipeline stages
@@ -78,13 +78,13 @@ Image + metadata (Postgres: sources + images)
 |---|-------|-------|-------|
 | 1 | Router | Claude Haiku | Classifies query intent |
 | 2 | Rewriter | llama3.1:8b | Expands to sub-queries + filters |
-| 3 | Filter | — | Period, typology, material, climate |
+| 3 | Filter | - | Period, typology, material, climate |
 | 4 | Vector search | CLIP ViT-B/32 | Top-100 per sub-query, FAISS |
 | 5 | Fusion | RRF | Merges sub-query ranked lists |
 | 6 | Reranker | bge-reranker-base | Cross-encoder, top-30 |
-| 7 | MMR | — | λ=0.7 diversity reranking |
+| 7 | MMR | - | λ=0.7 diversity reranking |
 | 8 | Synthesizer | mid LLM | Grounded explanation per result |
-| 9 | Citation | — | URL, license, photographer |
+| 9 | Citation | - | URL, license, photographer |
 
 ---
 
@@ -171,16 +171,16 @@ After training, logit temperature `T` is optimised on the val set to minimise Ex
 | ECE (calibration) | 0.056 | < 0.10 | ✅ |
 | Noise conf p95 | 0.466 | < 0.50 | ✅ |
 
-**4/6 gates pass.** Accuracy and Macro F1 are below the 0.90 threshold — improvement plan: expand Georgian val set (5 support → 20+) and add harder augmentations for Baroque/International confusions.
+**4/6 gates pass.** Accuracy and Macro F1 are below the 0.90 threshold - improvement plan: expand Georgian val set (5 support → 20+) and add harder augmentations for Baroque/International confusions.
 
 ### Retrieval metrics (image vs. full prompt bank)
 
 | Metric | Value | Target |
 |--------|-------|--------|
 | R@1 | 0.880 | ≥ 0.70 ✅ |
-| R@3 | 0.888 | — |
-| R@5 | 0.912 | — |
-| MRR | 0.901 | — |
+| R@3 | 0.888 | - |
+| R@5 | 0.912 | - |
+| MRR | 0.901 | - |
 
 Hard-negative discrimination: **pass rate 0.904**, mean cosine margin **0.173**.
 
@@ -217,7 +217,7 @@ Georgian low F1 is a val-set size artefact (5 samples). All other classes ≥ 0.
 
 ![Calibration and OOD](ml/viz/04_calibration_ood.png)
 
-OOD (noise images) confidence: mean **0.355**, p95 **0.466** — model does not over-confidently assign random images to known classes.
+OOD (noise images) confidence: mean **0.355**, p95 **0.466** - model does not over-confidently assign random images to known classes.
 
 ### ONNX export
 
@@ -250,8 +250,8 @@ All primary keys are UUIDs. `images.building_id` is NULL until the metadata extr
 
 Two `IndexFlatIP` (inner-product) indexes under `FAISS_DATA_DIR` (default `/data/faiss`):
 
-- `clip_<embedding_version>.index` — 512-d CLIP embeddings, one vector per image
-- `clip_<embedding_version>_id_map.json` — maps FAISS integer position → image UUID
+- `clip_<embedding_version>.index` - 512-d CLIP embeddings, one vector per image
+- `clip_<embedding_version>_id_map.json` - maps FAISS integer position → image UUID
 
 Indexes are rebuilt by running the embedder; they are **not** persisted in Postgres.
 
@@ -268,7 +268,7 @@ Images stored at `<spider_name>/<sha256[:2]>/<sha256>.<ext>`.
 
 The Scrapy spiders are incomplete. Load images via the RQ ingest worker directly.
 
-### Step 1 — Insert rows into Postgres
+### Step 1 - Insert rows into Postgres
 
 ```sql
 -- Insert source
@@ -286,7 +286,7 @@ VALUES ('<source-uuid>',
 RETURNING id;
 ```
 
-### Step 2 — Download image file
+### Step 2 - Download image file
 
 ```bash
 mkdir -p data/images/manual/ab
@@ -299,7 +299,7 @@ psql $DATABASE_URL -c "
 "
 ```
 
-### Step 3 — Enqueue ingest job
+### Step 3 - Enqueue ingest job
 
 ```python
 import redis
@@ -322,7 +322,7 @@ q.enqueue(ingest_image,
 
 Or call `ingest_image()` directly (synchronous) outside Docker.
 
-### Step 4 — Rebuild FAISS indexes
+### Step 4 - Rebuild FAISS indexes
 
 ```bash
 python -c "
@@ -349,7 +349,7 @@ docker compose up
 | Admin stats | `http://localhost:8000/admin/stats` |
 | Frontend | `http://localhost:3000` |
 
-For HTTPS with a real domain, set `DOMAIN=yourdomain.com` — Caddy handles Let's Encrypt automatically.
+For HTTPS with a real domain, set `DOMAIN=yourdomain.com` - Caddy handles Let's Encrypt automatically.
 
 ---
 
@@ -363,7 +363,7 @@ backend/                    FastAPI app, retrieval pipeline, ingestion workers
     workers/                RQ jobs: captioner, metadata extractor, ingest orchestrator
     models/                 SQLAlchemy ORM: Building, Image, Source, Feedback
     prompts/                LLM prompt templates: router, rewriter, synthesizer
-  migrations/               init.sql — Postgres schema
+  migrations/               init.sql - Postgres schema
 scraper/                    Scrapy spiders (use manual loading for now)
 ml/                         Fine-tuning notebook, training data, checkpoints
   finetune_clip_production_v2.ipynb   Main training notebook
@@ -427,13 +427,13 @@ Seven retrieval configurations compared against architect-curated queries (nDCG@
 
 | Config | Embedder | Filters | Rerank | Rewrite | MMR | nDCG@30 |
 |--------|----------|---------|--------|---------|-----|---------|
-| `baseline` | base CLIP | | | | | — |
-| `clip_filters` | base CLIP | ✓ | | | | — |
-| `clip_rerank` | base CLIP | ✓ | ✓ | | | — |
-| `tuned_clip` | LoRA-tuned | ✓ | | | | — |
-| `tuned_rerank` | LoRA-tuned | ✓ | ✓ | | | — |
-| `full_no_mmr` | LoRA-tuned | ✓ | ✓ | ✓ | | — |
-| `full` | LoRA-tuned | ✓ | ✓ | ✓ | ✓ | — |
+| `baseline` | base CLIP | | | | | - |
+| `clip_filters` | base CLIP | ✓ | | | | - |
+| `clip_rerank` | base CLIP | ✓ | ✓ | | | - |
+| `tuned_clip` | LoRA-tuned | ✓ | | | | - |
+| `tuned_rerank` | LoRA-tuned | ✓ | ✓ | | | - |
+| `full_no_mmr` | LoRA-tuned | ✓ | ✓ | ✓ | | - |
+| `full` | LoRA-tuned | ✓ | ✓ | ✓ | ✓ | - |
 
 Results populated after evaluation corpus finalised. See `eval/notebook.ipynb`.
 
@@ -441,4 +441,4 @@ Results populated after evaluation corpus finalised. See `eval/notebook.ipynb`.
 
 ## 📄 License
 
-Source code: **MIT** © [visquery.com](https://visquery.com). Data licenses vary per image — see `images.license` column. All training data sourced from CC-licensed and public-domain archives with full provenance.
+Source code: **MIT** © [visquery.com](https://visquery.com). Data licenses vary per image - see `images.license` column. All training data sourced from CC-licensed and public-domain archives with full provenance.
