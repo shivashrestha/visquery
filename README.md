@@ -12,7 +12,9 @@
     <img src="https://img.shields.io/badge/FAISS-IndexFlatIP-orange" />
     <img src="https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white" />
     <img src="https://img.shields.io/badge/License-MIT-green" />
+    <img src="https://img.shields.io/badge/live-visquery.com-informational?logo=vercel&logoColor=white" />
   </p>
+  <p><a href="https://visquery.com">visquery.com</a></p>
 </div>
 
 ---
@@ -439,4 +441,4 @@ Results populated after evaluation corpus finalised. See `eval/notebook.ipynb`.
 
 ## 📄 License
 
-Source code: **MIT**. Data licenses vary per image — see `images.license` column. All training data sourced from CC-licensed and public-domain archives with full provenance.
+Source code: **MIT** © [visquery.com](https://visquery.com). Data licenses vary per image — see `images.license` column. All training data sourced from CC-licensed and public-domain archives with full provenance.
