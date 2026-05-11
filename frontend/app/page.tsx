@@ -1,247 +1,324 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import Image from 'next/image';
+import Header, { type ViewName } from './components/Header';
 import SearchBar from './components/SearchBar';
-import FilterSidebar from './components/FilterSidebar';
-import ResultGrid from './components/ResultGrid';
-import GroundedAnswer from './components/GroundedAnswer';
-import BuildingModal from './components/BuildingModal';
-import { useSearch, useFeedbackState } from '@/lib/hooks';
+import ResultsView from './components/ResultsView';
+import DetailView from './components/DetailView';
+import CollectionsView from './components/CollectionsView';
+import LibraryView from './components/LibraryView';
+import IngestModal from './components/IngestModal';
+import { useSearch } from '@/lib/hooks';
 import type { SearchResultItem } from '@/lib/types';
-import { Menu, X } from 'lucide-react';
+
+type AppView =
+  | { name: 'home' }
+  | { name: 'results' }
+  | { name: 'library' }
+  | { name: 'collections' }
+  | { name: 'detail'; item: SearchResultItem; from: 'results' | 'library' | 'collections' };
+
+const heroVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
+};
+const heroItem = {
+  hidden: { opacity: 0, y: 14 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 0.61, 0.36, 1] } },
+};
+const chipsVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.05, delayChildren: 0.45 } },
+};
 
 export default function HomePage() {
+  const [view, setView] = useState<AppView>({ name: 'home' });
+  const [ingestOpen, setIngestOpen] = useState(false);
+
+  // Favorites persisted in localStorage
+  const [favItems, setFavItems] = useState<Record<string, SearchResultItem>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const stored = localStorage.getItem('visquery_favs');
+      return stored ? JSON.parse(stored) : {};
+    } catch { return {}; }
+  });
+  const favs = useMemo(() => {
+    const out: Record<string, boolean> = {};
+    Object.keys(favItems).forEach((k) => { out[k] = true; });
+    return out;
+  }, [favItems]);
+
+  const toggleFav = useCallback((item: SearchResultItem) => {
+    setFavItems((prev) => {
+      const next = { ...prev };
+      if (next[item.image_id]) {
+        delete next[item.image_id];
+      } else {
+        next[item.image_id] = item;
+      }
+      try { localStorage.setItem('visquery_favs', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   const {
     query,
     results,
     loading,
     error,
-    hasSearched,
     filters,
     submit,
+    submitByImage,
     loadMore,
     updateFilters,
     clearSearch,
     activeFilterCount,
   } = useSearch();
 
-  const { ratings, setRating } = useFeedbackState();
+  const handleSearch = useCallback((q: string) => {
+    submit(q);
+    setView({ name: 'results' });
+  }, [submit]);
 
-  const [selectedResult, setSelectedResult] = useState<SearchResultItem | null>(
-    null,
-  );
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const handleImageSearch = useCallback((file: File) => {
+    setView({ name: 'results' });
+    submitByImage(file);
+  }, [submitByImage]);
 
-  const handleCardClick = useCallback((result: SearchResultItem) => {
-    setSelectedResult(result);
-  }, []);
+  const handleOpen = useCallback((item: SearchResultItem) => {
+    const from =
+      view.name === 'library' ? 'library'
+      : view.name === 'collections' ? 'collections'
+      : 'results';
+    setView({ name: 'detail', item, from });
+  }, [view.name]);
 
-  const handleModalClose = useCallback(() => {
-    setSelectedResult(null);
-  }, []);
+  const handleBack = useCallback(() => {
+    if (view.name === 'detail') {
+      const from = view.from;
+      if (from === 'library') setView({ name: 'library' });
+      else if (from === 'collections') setView({ name: 'collections' });
+      else setView({ name: 'results' });
+    } else {
+      setView({ name: 'home' });
+    }
+  }, [view]);
 
-  const groundedAnswerText = results
-    ? buildGroundedAnswer(results.results, query)
-    : null;
+  const handleNav = useCallback((name: ViewName) => {
+    if (name === 'home') {
+      clearSearch();
+      setView({ name: 'home' });
+    } else if (name === 'results') {
+      setView({ name: 'results' });
+    } else if (name === 'library') {
+      setView({ name: 'library' });
+    } else if (name === 'collections') {
+      setView({ name: 'collections' });
+    }
+  }, [clearSearch]);
+
+  const allResults = results?.results ?? [];
+  const queryTerms = query
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .filter(Boolean);
+
+  // Related items for detail view
+  const relatedItems = useMemo(() => {
+    if (view.name !== 'detail') return [];
+    const { item } = view;
+    return allResults
+      .filter(
+        (r) =>
+          r.image_id !== item.image_id &&
+          (r.metadata.typology?.some((t) => item.metadata.typology?.includes(t)) ||
+            r.metadata.materials?.some((m) => item.metadata.materials?.includes(m))),
+      )
+      .slice(0, 6);
+  }, [view, allResults]);
+
+  const viewName: ViewName =
+    view.name === 'detail' ? view.from : view.name;
 
   return (
-    <div className="min-h-screen bg-near-white">
-      <header className="border-b border-border bg-near-white/95 backdrop-blur-sm sticky top-0 z-30">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-6 h-14">
-            <a href="/" className="flex-shrink-0" onClick={clearSearch}>
-              <span className="font-serif text-lg tracking-tight text-near-black">
-                Visquery
-              </span>
-            </a>
-            <div className="flex-1 max-w-2xl">
+    <div className="app" data-theme="monograph">
+      <Header
+        view={viewName}
+        onNav={handleNav}
+        resultCount={view.name === 'results' ? allResults.length : undefined}
+      />
+
+      <AnimatePresence mode="wait">
+        {/* ── Home / Hero ── */}
+        {view.name === 'home' && (
+          <motion.main
+            key="home"
+            className="hero"
+            variants={heroVariants}
+            initial="hidden"
+            animate="show"
+            exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}
+          >
+            <motion.div variants={heroItem} style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+              <Image
+                src="/app-logo.png"
+                alt="Visquery"
+                width={300}
+                height={300}
+                quality={100}
+                unoptimized
+                style={{ objectFit: 'contain' }}
+                priority
+              />
+            </motion.div>
+
+            <motion.h1 variants={heroItem}>
+              Find architecture <em>by description,</em>
+              <br />
+              <em>by image,</em> by feeling.
+            </motion.h1>
+            <motion.p className="lede" variants={heroItem}>
+              Describe the style you almost remember — the form, the ornament, the period.
+              Visquery searches indexed buildings and explains what it finds.
+            </motion.p>
+
+            <motion.div className="search-wrap" variants={heroItem}>
               <SearchBar
-                onSearch={submit}
+                onSearch={handleSearch}
+                onImageSearch={handleImageSearch}
                 loading={loading}
-                initialQuery={query}
+                initialQuery=""
+                large
               />
-            </div>
-            {hasSearched && (
-              <button
-                onClick={() => setSidebarOpen((v) => !v)}
-                className="lg:hidden flex items-center gap-1.5 text-sm text-muted hover:text-near-black transition-colors"
-                aria-label="Toggle filters"
-              >
-                {sidebarOpen ? (
-                  <X className="w-4 h-4" />
-                ) : (
-                  <Menu className="w-4 h-4" />
-                )}
-                <span>Filters</span>
-                {activeFilterCount > 0 && (
-                  <span className="bg-accent text-white text-2xs px-1.5 py-0.5 rounded-full font-medium">
-                    {activeFilterCount}
-                  </span>
-                )}
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
+              <motion.div className="suggest-row" variants={chipsVariants}>
+                {EXAMPLE_QUERIES.map((q) => (
+                  <motion.button
+                    key={q.text}
+                    className="suggest-chip"
+                    variants={heroItem}
+                    whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => handleSearch(q.text)}
+                  >
+                    {q.text}
+                    <span className="style-tag">{q.style}</span>
+                  </motion.button>
+                ))}
+              </motion.div>
+            </motion.div>
 
-      {!hasSearched && (
-        <main
-          id="main-content"
-          className="flex flex-col items-center justify-center min-h-[calc(100vh-3.5rem)] px-4"
-        >
-          <div className="w-full max-w-2xl text-center mb-10">
-            <h1 className="font-serif text-4xl sm:text-5xl text-near-black mb-3 leading-tight">
-              Find architectural precedents
-            </h1>
-            <p className="text-muted text-base sm:text-lg font-light leading-relaxed">
-              Describe what you are looking for — material, form, atmosphere,
-              typology — or drop an image.
-            </p>
-          </div>
-          <div className="w-full max-w-2xl">
-            <SearchBar
-              onSearch={submit}
-              loading={loading}
-              initialQuery=""
-              large
-            />
-          </div>
-          <div className="mt-8 flex flex-wrap gap-2 justify-center">
-            {EXAMPLE_QUERIES.map((q) => (
-              <button
-                key={q}
-                onClick={() => submit(q)}
-                className="text-sm text-muted border border-border rounded px-3 py-1.5 hover:border-accent hover:text-near-black transition-colors bg-white"
-              >
-                {q}
-              </button>
-            ))}
-          </div>
-        </main>
-      )}
+          </motion.main>
+        )}
 
-      {hasSearched && (
-        <main
-          id="main-content"
-          className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6"
-        >
-          <div className="flex gap-8">
-            <aside
-              className={[
-                'flex-shrink-0 w-60',
-                'hidden lg:block sticky top-[3.5rem] self-start max-h-[calc(100vh-3.5rem)] overflow-y-auto',
-              ].join(' ')}
-            >
-              <FilterSidebar
-                filters={filters}
-                onChange={updateFilters}
-                activeCount={activeFilterCount}
-              />
-            </aside>
-
-            {sidebarOpen && (
-              <div
-                className="fixed inset-0 z-40 lg:hidden"
-                onClick={() => setSidebarOpen(false)}
-              >
-                <div className="absolute inset-0 bg-near-black/20" />
-                <aside
-                  className="absolute left-0 top-14 bottom-0 w-72 bg-near-white border-r border-border overflow-y-auto"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <FilterSidebar
-                    filters={filters}
-                    onChange={updateFilters}
-                    activeCount={activeFilterCount}
-                  />
-                </aside>
+        {/* ── Search results ── */}
+        {view.name === 'results' && (
+          <motion.div
+            key="results"
+            style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            transition={{ duration: 0.25 }}
+          >
+            {error && (
+              <div style={{ padding: '10px 28px', background: '#fef2f2', borderBottom: '1px solid #fecaca', fontFamily: 'var(--mono)', fontSize: 11, color: '#b91c1c' }}>
+                {error}
               </div>
             )}
+            <ResultsView
+              items={allResults}
+              allItems={allResults}
+              loading={loading}
+              filters={filters}
+              onFilterChange={updateFilters}
+              activeFilterCount={activeFilterCount}
+              onOpen={handleOpen}
+              favs={favs}
+              onFav={toggleFav}
+              showAISummary
+              query={query}
+              onSearch={handleSearch}
+              committed={query}
+              queryTerms={queryTerms}
+              hasMore={results ? allResults.length > 0 && allResults.length % 30 === 0 : false}
+              onLoadMore={loadMore}
+            />
+          </motion.div>
+        )}
 
-            <div className="flex-1 min-w-0">
-              {error && (
-                <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded">
-                  {error}
-                </div>
-              )}
-              {groundedAnswerText && !loading && (
-                <GroundedAnswer text={groundedAnswerText} />
-              )}
-              <ResultGrid
-                results={results?.results ?? []}
-                loading={loading}
-                onCardClick={handleCardClick}
-                onLoadMore={loadMore}
-                hasMore={
-                  results ? results.results.length % 30 === 0 : false
-                }
-                query={query}
-                ratings={ratings}
-                onRatingChange={setRating}
-              />
-            </div>
-          </div>
-        </main>
-      )}
+        {/* ── Library ── */}
+        {view.name === 'library' && (
+          <motion.div
+            key="library"
+            style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            transition={{ duration: 0.25 }}
+          >
+            <LibraryView
+              onOpen={handleOpen}
+              favs={favs}
+              onFav={toggleFav}
+              onAdd={() => setIngestOpen(true)}
+            />
+          </motion.div>
+        )}
 
-      {selectedResult && (
-        <BuildingModal
-          result={selectedResult}
-          query={query}
-          onClose={handleModalClose}
-          ratings={ratings}
-          onRatingChange={setRating}
-        />
-      )}
+        {/* ── Collections ── */}
+        {view.name === 'collections' && (
+          <motion.div
+            key="collections"
+            style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            transition={{ duration: 0.25 }}
+          >
+            <CollectionsView
+              favItems={Object.values(favItems)}
+              onOpen={handleOpen}
+              favs={favs}
+              onFav={toggleFav}
+            />
+          </motion.div>
+        )}
+
+        {/* ── Detail ── */}
+        {view.name === 'detail' && (
+          <motion.div
+            key={`detail-${view.item.image_id}`}
+            style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            transition={{ duration: 0.25 }}
+          >
+            <DetailView
+              item={view.item}
+              related={relatedItems}
+              onBack={handleBack}
+              favs={favs}
+              onFav={toggleFav}
+              onOpen={handleOpen}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {ingestOpen && <IngestModal onClose={() => setIngestOpen(false)} />}
     </div>
   );
 }
 
-function buildGroundedAnswer(
-  results: SearchResultItem[],
-  query: string,
-): string {
-  if (results.length === 0) return 'No results found for this query.';
-
-  const architects = [
-    ...new Set(
-      results
-        .map((r) => r.metadata.architect)
-        .filter(Boolean)
-        .map((a) => a!.split(' ').pop()!),
-    ),
-  ].slice(0, 3);
-
-  const years = results
-    .map((r) => r.metadata.year_built)
-    .filter((y): y is number => typeof y === 'number');
-
-  const minYear = years.length ? Math.min(...years) : null;
-  const maxYear = years.length ? Math.max(...years) : null;
-
-  const count = results.length;
-  const yearRange =
-    minYear && maxYear && minYear !== maxYear
-      ? `${minYear}–${maxYear}`
-      : minYear
-        ? String(minYear)
-        : null;
-
-  const parts: string[] = [`Found ${count} result${count !== 1 ? 's' : ''}`];
-  if (yearRange) parts.push(`spanning ${yearRange}`);
-  if (architects.length > 0) {
-    parts.push(
-      `including ${architects.slice(0, -1).join(', ')}${architects.length > 1 ? ' and ' : ''}${architects[architects.length - 1]}`,
-    );
-  }
-
-  return parts.join(', ') + '.';
-}
-
-const EXAMPLE_QUERIES = [
-  'Thick walls that become furniture',
-  'Curved concrete facade with deep reveals',
-  'Timber school with natural light',
-  'Brutalist library with heavy cantilever',
-  'Courtyard house in hot climate',
+const EXAMPLE_QUERIES: { text: string; style: string }[] = [
+  { text: 'Art Deco architecture', style: 'Deco' },
+  { text: 'Bauhaus architecture', style: 'Bauhaus' },
+  { text: 'Gothic architecture', style: 'Gothic' },
+  { text: 'Deconstructivism', style: 'Decon' },
+  { text: 'Byzantine architecture', style: 'Byzantine' },
+  { text: 'Art Nouveau architecture', style: 'Nouveau' },
 ];

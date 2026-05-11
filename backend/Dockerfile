@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+RUN useradd -m -u 10001 appuser
+
 COPY pyproject.toml .
 
 # Install dependencies before copying source so Docker layer caches them
@@ -17,7 +19,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY app/ ./app/
 
-# FAISS and images volumes are mounted at runtime
-RUN mkdir -p /data/faiss /data/images
+# Runtime data directories (bind-mounted in docker-compose)
+RUN mkdir -p /data/sqlite /data/images /data/metadata /data/vectors /data/faiss
+RUN chown -R appuser:appuser /app /data
+USER appuser
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--reload"]

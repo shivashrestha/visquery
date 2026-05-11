@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, ImagePlus, Loader2 } from 'lucide-react';
-import { uploadImage } from '@/lib/api';
 
 interface SearchBarProps {
-  onSearch: (query: string, imageId?: string) => void;
+  onSearch: (query: string) => void;
+  onImageSearch?: (file: File) => void;
   loading?: boolean;
   initialQuery?: string;
   large?: boolean;
@@ -13,15 +14,16 @@ interface SearchBarProps {
 
 export default function SearchBar({
   onSearch,
+  onImageSearch,
   loading = false,
   initialQuery = '',
   large = false,
 }: SearchBarProps) {
   const [query, setQuery] = useState(initialQuery);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageId, setImageId] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -32,10 +34,10 @@ export default function SearchBar({
   const handleSubmit = useCallback(
     (e?: React.FormEvent) => {
       e?.preventDefault();
-      if (!query.trim() && !imageId) return;
-      onSearch(query, imageId);
+      if (!query.trim()) return;
+      onSearch(query);
     },
-    [query, imageId, onSearch],
+    [query, onSearch],
   );
 
   const handleKeyDown = useCallback(
@@ -45,25 +47,17 @@ export default function SearchBar({
     [handleSubmit],
   );
 
-  const processFile = useCallback(async (file: File) => {
+  const processFile = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       setImagePreview(ev.target?.result as string);
     };
     reader.readAsDataURL(file);
-
     setUploading(true);
-    try {
-      const id = await uploadImage(file);
-      setImageId(id);
-    } catch {
-      setImagePreview(null);
-      setImageId(undefined);
-    } finally {
-      setUploading(false);
-    }
-  }, []);
+    onImageSearch?.(file);
+    setUploading(false);
+  }, [onImageSearch]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
@@ -85,7 +79,6 @@ export default function SearchBar({
 
   const clearImage = useCallback(() => {
     setImagePreview(null);
-    setImageId(undefined);
     if (fileRef.current) fileRef.current.value = '';
   }, []);
 
@@ -96,18 +89,19 @@ export default function SearchBar({
   }, [clearImage]);
 
   const isActive = loading || uploading;
-  const hasContent = query.trim() || imageId;
+  const hasContent = query.trim();
 
   return (
     <form onSubmit={handleSubmit} className="relative w-full">
       <div
-        className={[
-          'relative flex items-center gap-2 border rounded-sm transition-colors bg-white',
-          large
-            ? 'px-4 py-3.5 border-border focus-within:border-accent/60'
-            : 'px-3 py-2 border-border focus-within:border-accent/60',
-          dragOver ? 'border-accent bg-amber-50/50' : '',
-        ].join(' ')}
+        className="relative flex items-center gap-2 transition-all"
+        style={{
+          padding: large ? '14px 14px 14px 18px' : '10px 10px 10px 14px',
+          border: `1px solid ${dragOver ? 'var(--accent)' : focused ? 'var(--ink-soft)' : 'var(--line)'}`,
+          borderRadius: '3px',
+          background: dragOver ? 'var(--accent-soft)' : 'var(--paper)',
+          boxShadow: focused ? '0 1px 0 var(--ink-faint)' : 'none',
+        }}
         onDragOver={(e) => {
           e.preventDefault();
           setDragOver(true);
@@ -117,31 +111,55 @@ export default function SearchBar({
       >
         {isActive ? (
           <Loader2
-            className={`flex-shrink-0 animate-spin text-accent ${large ? 'w-5 h-5' : 'w-4 h-4'}`}
+            className="flex-shrink-0 animate-spin"
+            style={{
+              width: large ? '18px' : '15px',
+              height: large ? '18px' : '15px',
+              color: 'var(--accent)',
+            }}
           />
         ) : (
           <Search
-            className={`flex-shrink-0 text-muted ${large ? 'w-5 h-5' : 'w-4 h-4'}`}
+            className="flex-shrink-0"
+            style={{
+              width: large ? '18px' : '15px',
+              height: large ? '18px' : '15px',
+              color: 'var(--ink-muted)',
+            }}
           />
         )}
 
-        {imagePreview && (
-          <div className="relative flex-shrink-0">
-            <img
-              src={imagePreview}
-              alt="Search image"
-              className="w-8 h-8 object-cover rounded-sm border border-border"
-            />
-            <button
-              type="button"
-              onClick={clearImage}
-              className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-near-black text-white rounded-full flex items-center justify-center"
-              aria-label="Remove image"
+        <AnimatePresence>
+          {imagePreview && (
+            <motion.div
+              className="relative flex-shrink-0"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.2 }}
             >
-              <X className="w-2 h-2" />
-            </button>
-          </div>
-        )}
+              <img
+                src={imagePreview}
+                alt="Search image"
+                className="object-cover rounded-sm"
+                style={{
+                  width: '30px',
+                  height: '30px',
+                  border: '1px solid var(--line)',
+                }}
+              />
+              <button
+                type="button"
+                onClick={clearImage}
+                className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center rounded-full"
+                style={{ background: 'var(--ink)', color: 'var(--paper)' }}
+                aria-label="Remove image"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <input
           ref={inputRef}
@@ -149,15 +167,18 @@ export default function SearchBar({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder={
             large
-              ? 'Describe what you are looking for — curved facade, thick walls that become furniture...'
-              : 'Search buildings...'
+              ? 'Describe a style, material, structure or drop an image…'
+              : 'Search buildings…'
           }
-          className={[
-            'flex-1 bg-transparent outline-none text-near-black placeholder:text-muted/60',
-            large ? 'text-base' : 'text-sm',
-          ].join(' ')}
+          className="flex-1 bg-transparent outline-none font-serif"
+          style={{
+            fontSize: large ? '1.05rem' : '0.9rem',
+            color: 'var(--ink)',
+          }}
           aria-label="Search query"
           autoComplete="off"
           spellCheck={false}
@@ -168,7 +189,10 @@ export default function SearchBar({
             <button
               type="button"
               onClick={clearAll}
-              className="p-1 text-muted hover:text-near-black transition-colors rounded"
+              className="p-1 rounded-sm transition-colors"
+              style={{ color: 'var(--ink-faint)', background: 'none', border: 'none' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--ink)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ink-faint)')}
               aria-label="Clear search"
             >
               <X className="w-4 h-4" />
@@ -178,26 +202,34 @@ export default function SearchBar({
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="p-1 text-muted hover:text-near-black transition-colors rounded"
+            className="p-1 rounded-sm transition-colors"
+            style={{ color: 'var(--ink-muted)', background: 'none', border: 'none' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--ink)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ink-muted)')}
             aria-label="Upload image for visual search"
             title="Drop or click to search by image"
           >
             <ImagePlus className="w-4 h-4" />
           </button>
 
-          <button
+          <motion.button
             type="submit"
             disabled={!hasContent || isActive}
-            className={[
-              'px-3 py-1 text-sm rounded-sm transition-colors font-medium',
-              large ? 'px-4 py-1.5' : 'px-3 py-1',
-              hasContent && !isActive
-                ? 'bg-accent text-white hover:bg-accent-700'
-                : 'bg-border text-muted cursor-not-allowed',
-            ].join(' ')}
+            className="font-mono uppercase rounded-sm transition-colors"
+            style={{
+              fontSize: '10px',
+              letterSpacing: '0.12em',
+              padding: large ? '8px 16px' : '6px 12px',
+              background: hasContent && !isActive ? 'var(--ink)' : 'var(--line)',
+              color: hasContent && !isActive ? 'var(--paper)' : 'var(--ink-muted)',
+              border: 'none',
+              cursor: hasContent && !isActive ? 'pointer' : 'not-allowed',
+            }}
+            whileHover={hasContent && !isActive ? { scale: 1.02 } : {}}
+            whileTap={hasContent && !isActive ? { scale: 0.97 } : {}}
           >
             Search
-          </button>
+          </motion.button>
         </div>
       </div>
 
@@ -210,13 +242,28 @@ export default function SearchBar({
         aria-hidden="true"
       />
 
-      {dragOver && (
-        <div className="absolute inset-0 border-2 border-dashed border-accent rounded-sm pointer-events-none flex items-center justify-center bg-amber-50/30">
-          <span className="text-sm text-accent font-medium">
-            Drop image to search
-          </span>
-        </div>
-      )}
+      <AnimatePresence>
+        {dragOver && (
+          <motion.div
+            className="absolute inset-0 pointer-events-none flex items-center justify-center rounded-sm"
+            style={{
+              border: '2px dashed var(--accent)',
+              background: 'var(--accent-soft)',
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <span
+              className="font-mono uppercase"
+              style={{ fontSize: '11px', letterSpacing: '0.14em', color: 'var(--accent)' }}
+            >
+              Drop image to search
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </form>
   );
 }

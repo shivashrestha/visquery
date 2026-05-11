@@ -5,7 +5,7 @@ export interface SearchRequest {
     period?: [number, number];
     typology?: string[];
     material?: string[];
-    location_country?: string;
+    country?: string;
   };
   config?: string;
 }
@@ -23,7 +23,7 @@ export interface BuildingMetadata {
 }
 
 export interface SearchResultItem {
-  building_id: string;
+  building_id: string | null;
   image_id: string;
   score: number;
   explanation?: string;
@@ -35,6 +35,8 @@ export interface SearchResultItem {
     title?: string;
   };
   image_url: string;
+  image_metadata?: Record<string, unknown>;
+  tags?: string[];
 }
 
 export interface SearchResponse {
@@ -73,10 +75,16 @@ export interface Building {
 
 export interface FeedbackRequest {
   image_id: string;
-  building_id: string;
+  building_id?: string;
   query: string;
   rating: 'up' | 'down';
   reason?: string;
+}
+
+export interface UploadResponse {
+  image_id: string;
+  metadata_job_id?: string;
+  ingest_status: string;
 }
 
 export type FilterState = {

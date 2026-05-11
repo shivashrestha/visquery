@@ -2,16 +2,26 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Visquery — Architectural Precedent Search',
+  title: 'Visquery | Visual Query for Architecture Styles',
   description:
-    'Search architectural precedents by description, image, typology, material, and more.',
+    'Search architectural precedents by building style, material, form, typology, and more. Powered by visual AI trained on architecture.',
   keywords: [
     'architecture',
+    'architectural style',
     'precedent search',
     'building reference',
     'typology',
     'visual search',
+    'art deco',
+    'bauhaus',
+    'gothic architecture',
+    'deconstructivism',
   ],
+  icons: {
+    icon: [{ url: '/app-logo.png', sizes: '100x100', type: 'image/png' }],
+    shortcut: [{ url: '/app-logo.png', sizes: '100x100', type: 'image/png' }],
+    apple: [{ url: '/app-logo.png', sizes: '100x100', type: 'image/png' }],
+  },
 };
 
 export default function RootLayout({
@@ -29,10 +39,14 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
       </head>
-      <body className="bg-near-white text-near-black antialiased">
+      <body
+        className="antialiased"
+        style={{ background: 'var(--bg)', color: 'var(--ink)' }}
+      >
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-accent focus:text-white focus:rounded text-sm"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:rounded text-sm"
+          style={{ background: 'var(--ink)', color: 'var(--paper)' }}
         >
           Skip to main content
         </a>

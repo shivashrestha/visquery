@@ -21,6 +21,83 @@ import structlog
 logger = structlog.get_logger()
 
 
+def _write_metadata_json(settings, image_id: str, meta: dict) -> None:
+    try:
+        metadata_dir = Path(settings.storage_root) / "metadata"
+        metadata_dir.mkdir(parents=True, exist_ok=True)
+        (metadata_dir / f"{image_id}.json").write_text(
+            json.dumps(meta, ensure_ascii=False, default=str), encoding="utf-8"
+        )
+    except Exception as exc:
+        logger.warning("metadata_json_write_failed", image_id=image_id, error=str(exc))
+
+
+def complete_image_metadata(image_id: str) -> dict[str, Any]:
+    """Background job: caption + metadata enrichment for an already embedded image."""
+    from app.config import get_settings
+    from app.workers.captioner import caption_image
+    from app.workers.metadata_extractor import extract_building_metadata
+
+    import sqlalchemy as sa
+    from sqlalchemy.orm import sessionmaker
+
+    settings = get_settings()
+    engine = sa.create_engine(settings.database_url, pool_pre_ping=True)
+    Session = sessionmaker(bind=engine)
+
+    with Session() as db:
+        from app.models.source import Image
+
+        row = db.query(Image).filter(Image.id == uuid.UUID(image_id)).first()
+        if row is None:
+            return {"status": "not_found", "image_id": image_id}
+
+        # Caption — let exception propagate so RQ marks job failed (visible via /jobs/{id})
+        log = logger.bind(image_id=image_id)
+        log.info("captioning_start", storage_path=row.storage_path)
+        caption_data = caption_image(row.storage_path, settings)
+        row.caption = caption_data.get("caption", "")
+        row.caption_method = caption_data.get("method", "")
+        log.info("captioning_done", caption_len=len(row.caption or ""))
+
+        # Store full VLM metadata on the image record
+        row.metadata_json = caption_data
+        classified = caption_data.get("architecture_style_classified") or ""
+        row.tags = list(dict.fromkeys(
+            ([classified] if classified else [])
+            + (caption_data.get("tags") or [])
+            + (caption_data.get("architectural_style") or [])
+            + (caption_data.get("materials") or [])
+            + (caption_data.get("program_hints") or [])
+        ))
+        log.info("metadata_done", tags=row.tags)
+
+        full_meta = {
+            "filename": Path(row.storage_path).name,
+            **caption_data,
+        }
+
+        # Best-effort building metadata extraction
+        try:
+            meta = extract_building_metadata(
+                text_excerpt=row.caption or "",
+                caption_json=caption_data,
+                wikidata={},
+                settings=settings,
+            )
+            full_meta["building"] = meta
+            log.info("building_metadata_done", meta_keys=list(meta.keys()))
+        except Exception as exc:
+            log.error("bg_metadata_failed", error=str(exc))
+
+        _write_metadata_json(settings, image_id, full_meta)
+
+        row.metadata_ready = True
+        row.ingest_status = "ready"
+        db.commit()
+    return {"status": "ok", "image_id": image_id}
+
+
 def ingest_image(
     storage_path: str,
     source_url: str,
@@ -87,10 +164,11 @@ def ingest_image(
         log.info("ingest_captioning")
         try:
             caption_data = caption_image(storage_path, settings)
-            caption_text = caption_data.get("summary", "")
+            caption_text = caption_data.get("caption", "")
             caption_method = caption_data.get("method", "")
         except Exception as exc:
             log.warning("ingest_caption_failed", error=str(exc))
+            caption_data = {}
             caption_text = ""
             caption_method = "failed"
 
@@ -105,6 +183,14 @@ def ingest_image(
 
         # Create image record
         image_id = uuid.uuid4()
+        classified = caption_data.get("architecture_style_classified") or ""
+        vlm_tags = list(dict.fromkeys(
+            ([classified] if classified else [])
+            + (caption_data.get("tags") or [])
+            + (caption_data.get("architectural_style") or [])
+            + (caption_data.get("materials") or [])
+            + (caption_data.get("program_hints") or [])
+        ))
         image = Image(
             id=image_id,
             storage_path=storage_path,
@@ -118,6 +204,8 @@ def ingest_image(
             license_url=license_url,
             source_id=source.id,
             embedding_version=settings.embedding_version,
+            metadata_json=caption_data,
+            tags=vlm_tags,
         )
         db.add(image)
         db.flush()
@@ -135,6 +223,10 @@ def ingest_image(
             raise
 
         # Extract building metadata
+        full_meta = {
+            "filename": path.name,
+            **caption_data,
+        }
         log.info("ingest_metadata_extraction")
         try:
             meta = extract_building_metadata(
@@ -145,8 +237,10 @@ def ingest_image(
             )
             building = _upsert_building(db, meta, settings.embedding_version)
             image.building_id = building.id
+            full_meta["building"] = meta
         except Exception as exc:
             log.warning("ingest_metadata_failed", error=str(exc))
+        _write_metadata_json(settings, str(image_id), full_meta)
 
         db.commit()
         log.info("ingest_complete", image_id=str(image_id))

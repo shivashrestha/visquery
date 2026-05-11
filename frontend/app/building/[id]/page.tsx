@@ -13,7 +13,7 @@ interface PageProps {
 async function fetchBuilding(id: string): Promise<Building | null> {
   const backendUrl = process.env.BACKEND_URL ?? 'http://localhost:8000';
   try {
-    const res = await fetch(`${backendUrl}/buildings/${id}`, {
+    const res = await fetch(`${backendUrl}/api/buildings/${id}`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return null;

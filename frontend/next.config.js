@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:8000';
+
 const nextConfig = {
   images: {
     remotePatterns: [
@@ -6,14 +8,22 @@ const nextConfig = {
         protocol: 'http',
         hostname: 'localhost',
         port: '8000',
-        pathname: '/images/**',
+        pathname: '/api/images/**',
       },
       {
         protocol: 'https',
         hostname: '*.visquery.app',
-        pathname: '/images/**',
+        pathname: '/api/images/**',
       },
     ],
+  },
+  async rewrites() {
+    return [
+      {
+        source: '/images/:path*',
+        destination: `${BACKEND_URL}/api/images/:path*`,
+      },
+    ];
   },
 };
 

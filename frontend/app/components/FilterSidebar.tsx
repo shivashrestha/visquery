@@ -1,279 +1,166 @@
 'use client';
 
-import { useId } from 'react';
-import * as Collapsible from '@radix-ui/react-collapsible';
-import * as Checkbox from '@radix-ui/react-checkbox';
-import * as Slider from '@radix-ui/react-slider';
-import { ChevronDown, Check, X } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronDown } from 'lucide-react';
 import { DEFAULT_FILTERS } from '@/lib/hooks';
-import type { FilterState } from '@/lib/types';
-import {
-  TYPOLOGY_OPTIONS,
-  MATERIAL_OPTIONS,
-  STRUCTURAL_SYSTEM_OPTIONS,
-  CLIMATE_ZONE_OPTIONS,
-} from '@/lib/types';
+import type { FilterState, SearchResultItem } from '@/lib/types';
 
 interface FilterSidebarProps {
   filters: FilterState;
   onChange: (next: FilterState) => void;
   activeCount: number;
+  corpus?: SearchResultItem[];
 }
 
-function FilterSection({
-  title,
-  badge,
-  children,
-}: {
-  title: string;
-  badge?: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <Collapsible.Root defaultOpen className="border-b border-border">
-      <Collapsible.Trigger className="flex items-center justify-between w-full py-3 text-left group">
-        <div className="flex items-center gap-2">
-          <span className="text-xs uppercase tracking-wider font-medium text-muted group-hover:text-near-black transition-colors">
-            {title}
-          </span>
-          {badge !== undefined && badge > 0 && (
-            <span className="text-2xs bg-accent text-white px-1.5 py-0.5 rounded-full font-medium">
-              {badge}
-            </span>
-          )}
-        </div>
-        <ChevronDown className="w-3.5 h-3.5 text-muted group-data-[state=open]:rotate-180 transition-transform" />
-      </Collapsible.Trigger>
-      <Collapsible.Content className="pb-3 space-y-1.5">
-        {children}
-      </Collapsible.Content>
-    </Collapsible.Root>
-  );
-}
-
-function CheckboxItem({
-  value,
-  label,
-  checked,
-  onChange,
-}: {
-  value: string;
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  const id = useId();
-  return (
-    <div className="flex items-center gap-2.5">
-      <Checkbox.Root
-        id={id}
-        checked={checked}
-        onCheckedChange={onChange}
-        className="w-3.5 h-3.5 border border-border rounded-sm flex-shrink-0 flex items-center justify-center data-[state=checked]:bg-accent data-[state=checked]:border-accent transition-colors"
-      >
-        <Checkbox.Indicator>
-          <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
-        </Checkbox.Indicator>
-      </Checkbox.Root>
-      <label
-        htmlFor={id}
-        className="text-sm text-near-black/80 cursor-pointer hover:text-near-black transition-colors select-none"
-      >
-        {label}
-      </label>
-    </div>
-  );
-}
+const FACETS = [
+  {
+    key: 'typology' as const,
+    label: 'Typology',
+    values: ['House', 'Apartment building', 'School', 'Library', 'Museum', 'Office', 'Cultural center', 'Religious', 'Industrial'],
+    filterKey: 'typology' as keyof FilterState,
+    metaKey: 'typology' as keyof import('@/lib/types').BuildingMetadata,
+    isArray: true,
+  },
+  {
+    key: 'material' as const,
+    label: 'Material',
+    values: ['Concrete', 'Brick', 'Timber', 'Steel', 'Glass', 'Stone', 'Earth'],
+    filterKey: 'material' as keyof FilterState,
+    metaKey: 'materials' as keyof import('@/lib/types').BuildingMetadata,
+    isArray: true,
+  },
+  {
+    key: 'structure' as const,
+    label: 'Structure',
+    values: ['Moment frame', 'Load-bearing wall', 'Shell', 'Tensile', 'Space frame'],
+    filterKey: 'structural_system' as keyof FilterState,
+    metaKey: 'structural_system' as keyof import('@/lib/types').BuildingMetadata,
+    isArray: false,
+  },
+  {
+    key: 'climate' as const,
+    label: 'Climate',
+    values: ['Tropical', 'Hot desert', 'Mediterranean', 'Humid', 'Oceanic', 'Continental', 'Subarctic'],
+    filterKey: 'climate_zone' as keyof FilterState,
+    metaKey: 'climate_zone' as keyof import('@/lib/types').BuildingMetadata,
+    isArray: false,
+  },
+];
 
 function toggleValue(arr: string[], value: string): string[] {
-  return arr.includes(value)
-    ? arr.filter((v) => v !== value)
-    : [...arr, value];
+  const normalized = value.toLowerCase().replace(/\s+/g, '_');
+  const has = arr.some((v) => v.toLowerCase() === normalized || v.toLowerCase() === value.toLowerCase());
+  if (has) return arr.filter((v) => v.toLowerCase() !== normalized && v.toLowerCase() !== value.toLowerCase());
+  return [...arr, normalized];
+}
+
+function isActive(arr: string[], value: string): boolean {
+  const normalized = value.toLowerCase().replace(/\s+/g, '_');
+  return arr.some((v) => v.toLowerCase() === normalized || v.toLowerCase() === value.toLowerCase());
 }
 
 export default function FilterSidebar({
   filters,
   onChange,
   activeCount,
+  corpus = [],
 }: FilterSidebarProps) {
+  const [open, setOpen] = useState<Record<string, boolean>>({
+    typology: true, material: true, structure: false, climate: false,
+  });
+
   const update = (partial: Partial<FilterState>) =>
     onChange({ ...filters, ...partial });
 
+  // Compute facet counts from corpus
+  const counts = useMemo(() => {
+    const out: Record<string, Record<string, number>> = {};
+    FACETS.forEach((f) => {
+      out[f.key] = {};
+      f.values.forEach((v) => { out[f.key][v] = 0; });
+      corpus.forEach((item) => {
+        const val = item.metadata[f.metaKey as keyof typeof item.metadata];
+        if (Array.isArray(val)) {
+          (val as string[]).forEach((x) => {
+            const match = f.values.find((v) => v.toLowerCase() === x.toLowerCase());
+            if (match) out[f.key][match] = (out[f.key][match] ?? 0) + 1;
+          });
+        } else if (typeof val === 'string') {
+          const match = f.values.find((v) => v.toLowerCase() === val.toLowerCase());
+          if (match) out[f.key][match] = (out[f.key][match] ?? 0) + 1;
+        }
+      });
+    });
+    return out;
+  }, [corpus]);
+
+  const total = [
+    filters.typology.length,
+    filters.material.length,
+    filters.structural_system.length,
+    filters.climate_zone.length,
+  ].reduce((a, b) => a + b, 0);
+
   return (
-    <div className="py-4 pr-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs uppercase tracking-wider font-medium text-muted">
-          Filters
-        </span>
-        {activeCount > 0 && (
-          <button
-            onClick={() => onChange({ ...DEFAULT_FILTERS })}
-            className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
-          >
-            <X className="w-3 h-3" />
-            Clear all
+    <aside className="sidebar">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+        <p className="sidebar-label" style={{ margin: 0 }}>Filters</p>
+        {total > 0 && (
+          <button className="clear-link" onClick={() => onChange({ ...DEFAULT_FILTERS })}>
+            Clear ({total})
           </button>
         )}
       </div>
 
-      <FilterSection
-        title="Typology"
-        badge={filters.typology.length}
-      >
-        {TYPOLOGY_OPTIONS.map((opt) => (
-          <CheckboxItem
-            key={opt.value}
-            value={opt.value}
-            label={opt.label}
-            checked={filters.typology.includes(opt.value)}
-            onChange={() =>
-              update({ typology: toggleValue(filters.typology, opt.value) })
-            }
-          />
-        ))}
-      </FilterSection>
-
-      <FilterSection title="Material" badge={filters.material.length}>
-        {MATERIAL_OPTIONS.map((opt) => (
-          <CheckboxItem
-            key={opt.value}
-            value={opt.value}
-            label={opt.label}
-            checked={filters.material.includes(opt.value)}
-            onChange={() =>
-              update({ material: toggleValue(filters.material, opt.value) })
-            }
-          />
-        ))}
-      </FilterSection>
-
-      <FilterSection
-        title="Structure"
-        badge={filters.structural_system.length}
-      >
-        {STRUCTURAL_SYSTEM_OPTIONS.map((opt) => (
-          <CheckboxItem
-            key={opt.value}
-            value={opt.value}
-            label={opt.label}
-            checked={filters.structural_system.includes(opt.value)}
-            onChange={() =>
-              update({
-                structural_system: toggleValue(
-                  filters.structural_system,
-                  opt.value,
-                ),
-              })
-            }
-          />
-        ))}
-      </FilterSection>
-
-      <FilterSection title="Climate" badge={filters.climate_zone.length}>
-        {CLIMATE_ZONE_OPTIONS.map((opt) => (
-          <CheckboxItem
-            key={opt.value}
-            value={opt.value}
-            label={opt.label}
-            checked={filters.climate_zone.includes(opt.value)}
-            onChange={() =>
-              update({
-                climate_zone: toggleValue(filters.climate_zone, opt.value),
-              })
-            }
-          />
-        ))}
-      </FilterSection>
-
-      <FilterSection
-        title="Period"
-        badge={
-          filters.period[0] !== 0 || filters.period[1] !== 2024 ? 1 : 0
-        }
-      >
-        <div className="px-1 pt-2 pb-1">
-          <Slider.Root
-            min={0}
-            max={2024}
-            step={1}
-            value={filters.period}
-            onValueChange={(val) =>
-              update({ period: val as [number, number] })
-            }
-            className="relative flex items-center select-none touch-none w-full h-5"
-          >
-            <Slider.Track className="bg-border relative grow rounded-full h-0.5">
-              <Slider.Range className="absolute bg-accent rounded-full h-full" />
-            </Slider.Track>
-            <Slider.Thumb
-              className="block w-3.5 h-3.5 bg-white border-2 border-accent rounded-full shadow focus:outline-none focus:ring-2 focus:ring-accent/40"
-              aria-label="Period start"
-            />
-            <Slider.Thumb
-              className="block w-3.5 h-3.5 bg-white border-2 border-accent rounded-full shadow focus:outline-none focus:ring-2 focus:ring-accent/40"
-              aria-label="Period end"
-            />
-          </Slider.Root>
-          <div className="flex justify-between mt-2 text-xs text-muted">
-            <span>{filters.period[0] === 0 ? 'Any' : filters.period[0]}</span>
-            <span>{filters.period[1]}</span>
+      {FACETS.map((f) => {
+        const activeVals = filters[f.filterKey] as string[];
+        return (
+          <div className="facet-group" key={f.key}>
+            <button
+              className={`facet-head${open[f.key] ? '' : ' is-closed'}`}
+              onClick={() => setOpen((o) => ({ ...o, [f.key]: !o[f.key] }))}
+            >
+              <span>{f.label}</span>
+              <span className="chev">
+                <ChevronDown size={11} />
+              </span>
+            </button>
+            <AnimatePresence initial={false}>
+              {open[f.key] && (
+                <motion.div
+                  className="facet-list"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.22, ease: 'easeOut' }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  {f.values.map((v) => {
+                    const on = isActive(activeVals, v);
+                    const count = counts[f.key]?.[v] ?? 0;
+                    return (
+                      <motion.div
+                        key={v}
+                        className={`facet-item${on ? ' on' : ''}`}
+                        onClick={() =>
+                          update({ [f.filterKey]: toggleValue(activeVals, v) } as Partial<FilterState>)
+                        }
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <span className="box" />
+                        <span>{v}</span>
+                        {count > 0 && <span className="count">{count}</span>}
+                      </motion.div>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-        </div>
-      </FilterSection>
+        );
+      })}
 
-      <FilterSection title="Country" badge={filters.location_country ? 1 : 0}>
-        <input
-          type="text"
-          value={filters.location_country}
-          onChange={(e) => update({ location_country: e.target.value })}
-          placeholder="e.g. Finland"
-          list="country-list"
-          className="w-full text-sm border border-border rounded-sm px-2.5 py-1.5 bg-white outline-none focus:border-accent/60 placeholder:text-muted/50 transition-colors"
-        />
-        <datalist id="country-list">
-          {COUNTRIES.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
-      </FilterSection>
-    </div>
+    </aside>
   );
 }
-
-const COUNTRIES = [
-  'Australia',
-  'Austria',
-  'Belgium',
-  'Brazil',
-  'Canada',
-  'Chile',
-  'China',
-  'Czech Republic',
-  'Denmark',
-  'Egypt',
-  'Finland',
-  'France',
-  'Germany',
-  'Ghana',
-  'Greece',
-  'India',
-  'Iran',
-  'Israel',
-  'Italy',
-  'Japan',
-  'Mexico',
-  'Morocco',
-  'Netherlands',
-  'Norway',
-  'Peru',
-  'Poland',
-  'Portugal',
-  'Russia',
-  'South Korea',
-  'Spain',
-  'Sweden',
-  'Switzerland',
-  'Turkey',
-  'United Kingdom',
-  'United States',
-];
