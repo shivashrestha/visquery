@@ -28,7 +28,7 @@ dependencies = [
     "structlog>=24.1.0",
     "prometheus-client>=0.20.0",
     "python-multipart>=0.0.9",
-    "transformers>=3.11",
+    "transformers>=4.40.0",
 ]
 
 [project.optional-dependencies]
