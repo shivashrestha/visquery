@@ -49,7 +49,7 @@
 
 ```
 User query (text)
-  → Router (Claude Haiku)       - classifies intent: concept / visual / metadata-only / hybrid
+  → Router ()                   - classifies intent: concept / visual / metadata-only / hybrid
   → Rewriter (llama3.1:8b)      - decomposes into visual sub-queries, extracts hard filters
   → Filter                       - applies period / typology / material / climate constraints
   → CLIP FAISS index             - top-100 nearest neighbours per sub-query (ViT-B/32)
