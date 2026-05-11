@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     top_k_retrieve: int = 100
     top_k_final: int = 30
 
+    # CORS — comma-separated list of allowed origins (e.g. https://visquery.com,https://www.visquery.com)
+    allowed_origins: str = "*"
+
     # Logging
     log_level: str = "INFO"
 
