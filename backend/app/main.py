@@ -47,6 +47,15 @@ CORPUS_SIZE = Gauge("visquery_corpus_images_total", "Number of images in corpus"
 async def lifespan(app: FastAPI):
     import asyncio
     from app.services.embedder import warmup, CLIP_EXECUTOR
+    from app.deps import _get_engine
+    from app.models.building import Base
+    import app.models.source  # noqa: F401 — register ORM classes on Base
+    import app.models.feedback  # noqa: F401 — register ORM classes on Base
+
+    settings = get_settings()
+    engine = _get_engine(settings)
+    Base.metadata.create_all(bind=engine)
+
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(CLIP_EXECUTOR, warmup)
     yield
