@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import Header, { type ViewName } from './components/Header';
+import PrivacyModal from './components/PrivacyModal';
 import SearchBar from './components/SearchBar';
 import ResultsView from './components/ResultsView';
 import DetailView from './components/DetailView';
@@ -36,6 +37,7 @@ const chipsVariants = {
 export default function HomePage() {
   const [view, setView] = useState<AppView>({ name: 'home' });
   const [ingestOpen, setIngestOpen] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
 
   // Favorites persisted in localStorage
   const [favItems, setFavItems] = useState<Record<string, SearchResultItem>>(() => {
@@ -210,6 +212,13 @@ export default function HomePage() {
               </motion.div>
             </motion.div>
 
+            <div className="landing-footer">
+              <span>© {new Date().getFullYear()} Visquery · visquery.com</span>
+              <button className="landing-footer-link" onClick={() => setPrivacyOpen(true)}>
+                Privacy Policy
+              </button>
+            </div>
+
           </motion.main>
         )}
 
@@ -310,6 +319,7 @@ export default function HomePage() {
       </AnimatePresence>
 
       {ingestOpen && <IngestModal onClose={() => setIngestOpen(false)} />}
+      {privacyOpen && <PrivacyModal onClose={() => setPrivacyOpen(false)} />}
     </div>
   );
 }

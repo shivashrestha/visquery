@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import CookieConsent from './components/CookieConsent';
 
 export const metadata: Metadata = {
   title: 'Visquery | Visual Query for Architecture Styles',
@@ -51,6 +52,7 @@ export default function RootLayout({
           Skip to main content
         </a>
         {children}
+        <CookieConsent />
       </body>
     </html>
   );
