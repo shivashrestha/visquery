@@ -10,7 +10,6 @@ import ResultsView from './components/ResultsView';
 import DetailView from './components/DetailView';
 import CollectionsView from './components/CollectionsView';
 import LibraryView from './components/LibraryView';
-import IngestModal from './components/IngestModal';
 import { useSearch } from '@/lib/hooks';
 import type { SearchResultItem } from '@/lib/types';
 
@@ -36,7 +35,6 @@ const chipsVariants = {
 
 export default function HomePage() {
   const [view, setView] = useState<AppView>({ name: 'home' });
-  const [ingestOpen, setIngestOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
 
   // Favorites persisted in localStorage
@@ -272,7 +270,6 @@ export default function HomePage() {
               onOpen={handleOpen}
               favs={favs}
               onFav={toggleFav}
-              onAdd={() => setIngestOpen(true)}
             />
           </motion.div>
         )}
@@ -318,7 +315,6 @@ export default function HomePage() {
         )}
       </AnimatePresence>
 
-      {ingestOpen && <IngestModal onClose={() => setIngestOpen(false)} />}
       {privacyOpen && <PrivacyModal onClose={() => setPrivacyOpen(false)} />}
     </div>
   );

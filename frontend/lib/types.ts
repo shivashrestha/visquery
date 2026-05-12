@@ -11,6 +11,7 @@ export interface SearchRequest {
 }
 
 export interface BuildingMetadata {
+  name?: string;
   architect?: string;
   year_built?: number;
   location_country?: string;

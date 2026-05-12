@@ -1,7 +1,8 @@
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/opt/hf-cache
 
 WORKDIR /app
 
@@ -20,6 +21,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
         torch torchvision \
         --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir .
+
+# Bake CLIP ViT-B/32 weights into image — no runtime download needed
+RUN python -c "import open_clip; open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')" && \
+    chmod -R 755 /opt/hf-cache
 
 COPY app/ ./app/
 

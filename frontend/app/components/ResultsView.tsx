@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutGrid, List } from 'lucide-react';
+import { LayoutGrid, List, SlidersHorizontal, X } from 'lucide-react';
 import type { SearchResultItem, FilterState } from '@/lib/types';
 import BuildingCard from './BuildingCard';
 import RowCard from './RowCard';
@@ -67,15 +67,41 @@ export default function ResultsView({
   onLoadMore,
 }: ResultsViewProps) {
   const [view, setView] = useState<'grid' | 'list'>('grid');
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
 
   return (
     <div className="results-shell">
+      {/* Desktop sidebar */}
       <FilterSidebar
         filters={filters}
         onChange={onFilterChange}
         activeCount={activeFilterCount}
         corpus={allItems ?? items}
       />
+
+      {/* Mobile filter overlay */}
+      <div
+        className={`sidebar-overlay${filterDrawerOpen ? ' is-open' : ''}`}
+        onClick={() => setFilterDrawerOpen(false)}
+      />
+      <div className={`sidebar-drawer${filterDrawerOpen ? ' is-open' : ''}`}>
+        <div className="sidebar-drawer-handle">
+          <span>Filters {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}</span>
+          <button
+            className="sidebar-drawer-close"
+            onClick={() => setFilterDrawerOpen(false)}
+            aria-label="Close filters"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <FilterSidebar
+          filters={filters}
+          onChange={onFilterChange}
+          activeCount={activeFilterCount}
+          corpus={allItems ?? items}
+        />
+      </div>
 
       <main className="results-main fade-in" key={committed + (title ?? '')}>
         {/* Compact search bar */}
@@ -102,6 +128,15 @@ export default function ResultsView({
           </div>
           <div className="results-meta">
             {headerAction && headerAction}
+            {/* Mobile filter button */}
+            <button
+              className={`mobile-filter-btn${activeFilterCount > 0 ? ' has-active' : ''}`}
+              onClick={() => setFilterDrawerOpen(true)}
+              aria-label="Open filters"
+            >
+              <SlidersHorizontal size={11} />
+              Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+            </button>
             <span>{loading ? '…' : `${items.length} results`}</span>
             <div className="view-toggle">
               <button

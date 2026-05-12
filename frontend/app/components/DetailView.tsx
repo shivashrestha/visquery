@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Heart, Copy, ExternalLink } from 'lucide-react';
+import CachedImage from './CachedImage';
+import { ArrowLeft, Heart, ExternalLink, MessageSquare, Info } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
 import BuildingCard from './BuildingCard';
 import { chatImage } from '@/lib/api';
@@ -18,13 +18,27 @@ interface DetailViewProps {
 }
 
 const STARTER_QS = [
-  "What's the structural strategy?",
-  "Compare to similar precedents",
-  "Suitable for a hot climate?",
-  "What materials and finishes?",
+  "What style is this?",
+  "Materials and finishes?",
+  "How does it respond to climate?",
+  "What's the structural approach?",
+  "Spatial qualities?",
+  "Suitable for a dense urban site?",
 ];
 
 type ChatMsg = { who: 'user' | 'ai'; text: string };
+
+function renderBubble(text: string): React.ReactNode {
+  // Strip stray markdown bold markers and render line breaks
+  const clean = text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
+  const lines = clean.split('\n').filter((l) => l.trim() !== '');
+  if (lines.length <= 1) return clean;
+  return lines.map((line, i) => (
+    <span key={i} style={{ display: 'block', marginBottom: i < lines.length - 1 ? '0.5em' : 0 }}>
+      {line}
+    </span>
+  ));
+}
 
 function getMotifLabel(item: SearchResultItem): string {
   const mat = item.metadata.materials?.[0] ?? '';
@@ -57,11 +71,11 @@ function PseudoThumb({ item }: { item: SearchResultItem }) {
   );
 }
 
-function ImageOrPlaceholder({ item, fill = false }: { item: SearchResultItem; fill?: boolean }) {
+function ImageOrPlaceholder({ item, fill = false, priority = false }: { item: SearchResultItem; fill?: boolean; priority?: boolean }) {
   const [failed, setFailed] = useState(false);
   if (item.image_url && !failed) {
     return (
-      <Image
+      <CachedImage
         src={item.image_url}
         alt={item.metadata.architect ?? 'Building'}
         fill={fill}
@@ -69,11 +83,18 @@ function ImageOrPlaceholder({ item, fill = false }: { item: SearchResultItem; fi
         height={fill ? undefined : 400}
         className="object-cover w-full h-full"
         onError={() => setFailed(true)}
-        priority
+        priority={priority}
+        sizes="(max-width: 768px) 100vw, 60vw"
       />
     );
   }
   return <PseudoThumb item={item} />;
+}
+
+/** Pull a typed value from image_metadata safely. */
+function vmeta(item: SearchResultItem, key: string): string {
+  const v = item.image_metadata?.[key];
+  return typeof v === 'string' ? v : '';
 }
 
 export default function DetailView({
@@ -85,11 +106,86 @@ export default function DetailView({
   onOpen,
 }: DetailViewProps) {
   const [activeImg, setActiveImg] = useState(0);
+  const [mobileTab, setMobileTab] = useState<'detail' | 'chat'>('detail');
+
+  // ── Resizable RAG panel ──────────────────────────────────────
+  const MIN_RAG = 220;
+  const MAX_RAG = 680;
+  const DEFAULT_RAG = 360;
+
+  const [ragWidth, setRagWidth] = useState<number>(() => {
+    try {
+      const v = localStorage.getItem('vq_rag_w');
+      if (v) return Math.max(MIN_RAG, Math.min(MAX_RAG, parseInt(v, 10)));
+    } catch {}
+    return DEFAULT_RAG;
+  });
+
+  const dragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartW = useRef(DEFAULT_RAG);
+
+  const onHandleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    dragStartX.current = e.clientX;
+    dragStartW.current = ragWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [ragWidth]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragging.current) return;
+      const delta = dragStartX.current - e.clientX;
+      setRagWidth(Math.max(MIN_RAG, Math.min(MAX_RAG, dragStartW.current + delta)));
+    };
+    const onUp = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setRagWidth((w) => {
+        try { localStorage.setItem('vq_rag_w', String(w)); } catch {}
+        return w;
+      });
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
+  // Resolved display values — metadata fields first, fall back to image_metadata (VLM)
+  const displayDescription =
+    item.metadata.description ||
+    item.explanation ||
+    vmeta(item, 'description') ||
+    '';
+  const displayTitle =
+    (item.metadata as Record<string, unknown>).name as string | undefined ||
+    item.source.title ||
+    item.metadata.architect ||
+    vmeta(item, 'title') ||
+    '';
+  const styleClassified = vmeta(item, 'architecture_style_classified');
+  const styleTop = (item.image_metadata?.architecture_style_top ?? []) as [string, number][];
+  const rawText = vmeta(item, 'raw_text');
+
+  const initialAiText = (() => {
+    const typology = item.metadata.typology?.[0]?.replace(/_/g, ' ');
+    const mats = item.metadata.materials?.join(' + ')?.toLowerCase();
+    const year = item.metadata.year_built;
+    const desc = displayDescription;
+    const parts = [typology, mats && `in ${mats}`, year && String(year)].filter(Boolean);
+    const intro = parts.length ? parts.join(', ') : null;
+    return [intro, desc].filter(Boolean).join('. ') || 'Ask me anything about this image.';
+  })();
+
   const [msgs, setMsgs] = useState<ChatMsg[]>([
-    {
-      who: 'ai',
-      text: `This is a ${(item.metadata.typology?.[0] ?? 'building').replace(/_/g, ' ')} in ${(item.metadata.materials ?? []).join(' + ').toLowerCase() || 'unknown materials'}, dated ${item.metadata.year_built ?? 'unknown'}. ${item.metadata.description ?? item.explanation ?? ''}`,
-    },
+    { who: 'ai', text: initialAiText },
   ]);
   const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState('');
@@ -124,9 +220,15 @@ export default function DetailView({
   const materials = item.metadata.materials ?? [];
 
   return (
-    <div className="detail-shell">
+    <div
+      className="detail-shell"
+      style={{ gridTemplateColumns: `1fr 5px ${ragWidth}px` }}
+    >
       {/* Main content */}
-      <div className="detail-main fade-in" key={item.image_id}>
+      <div
+        className={`detail-main fade-in${mobileTab === 'chat' ? ' mobile-hidden' : ''}`}
+        key={item.image_id}
+      >
         <button className="detail-back" onClick={onBack}>
           <ArrowLeft size={11} /> Back to results
         </button>
@@ -142,7 +244,7 @@ export default function DetailView({
               transition={{ duration: 0.4 }}
               style={{ position: 'absolute', inset: 0 }}
             >
-              <ImageOrPlaceholder item={thumbs[activeImg]} fill />
+              <ImageOrPlaceholder item={thumbs[activeImg]} fill priority={activeImg === 0} />
             </motion.div>
           </AnimatePresence>
         </motion.div>
@@ -163,11 +265,13 @@ export default function DetailView({
         {/* Title + actions */}
         <div className="detail-head">
           <div>
-            <h1>{item.source.title || item.metadata.architect || 'Untitled'}</h1>
-            <p className="sub">
-              {[item.metadata.architect, locationStr, item.metadata.year_built]
-                .filter(Boolean).join(', ')}
-            </p>
+            {displayTitle && <h1>{displayTitle}</h1>}
+            {[item.metadata.architect, locationStr, item.metadata.year_built].filter(Boolean).length > 0 && (
+              <p className="sub">
+                {[item.metadata.architect, locationStr, item.metadata.year_built]
+                  .filter(Boolean).join(', ')}
+              </p>
+            )}
           </div>
           <div className="actions">
             <motion.button
@@ -195,13 +299,9 @@ export default function DetailView({
         <div className="detail-grid">
           <div className="detail-section">
             <h4>Description</h4>
-            {item.explanation && (
-              <p style={{ fontStyle: 'italic' }}>{item.explanation}</p>
-            )}
-            {item.metadata.description && (
-              <p>{item.metadata.description}</p>
-            )}
-            {!item.explanation && !item.metadata.description && (
+            {displayDescription ? (
+              <p>{displayDescription}</p>
+            ) : (
               <p style={{ color: 'var(--ink-faint)', fontStyle: 'italic' }}>
                 No description available.
               </p>
@@ -247,8 +347,39 @@ export default function DetailView({
                   <dd>{item.metadata.year_built}</dd>
                 </>
               )}
+              {styleClassified && (
+                <>
+                  <dt>Style</dt>
+                  <dd>{styleClassified}</dd>
+                </>
+              )}
             </dl>
           </div>
+
+          {styleTop.length > 0 && (
+            <div className="detail-section">
+              <h4>Style classification</h4>
+              <dl className="detail-meta-list">
+                {styleTop.map(([style, score]) => (
+                  <div key={style} style={{ display: 'contents' }}>
+                    <dt style={{ fontWeight: 'normal' }}>{style}</dt>
+                    <dd style={{ fontFamily: 'var(--mono)', fontSize: '10px', opacity: 0.7 }}>
+                      {(score * 100).toFixed(1)}%
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+
+          {rawText && (
+            <div className="detail-section">
+              <h4>Search index text</h4>
+              <p style={{ fontSize: '0.78rem', lineHeight: 1.55, color: 'var(--ink-faint)' }}>
+                {rawText}
+              </p>
+            </div>
+          )}
 
           {item.source.license && (
             <div className="detail-section">
@@ -306,12 +437,21 @@ export default function DetailView({
         )}
       </div>
 
+      {/* Resize handle — hidden on mobile */}
+      <div
+        className="rag-resize-handle"
+        onMouseDown={onHandleMouseDown}
+        title="Drag to resize"
+      >
+        <div className="rag-resize-grip" />
+      </div>
+
       {/* RAG sidebar */}
-      <aside className="rag">
+      <aside className={`rag${mobileTab === 'detail' ? '' : ' mobile-visible'}`}>
         <div className="rag-head">
           <div className="lbl">Ask about this image</div>
           <h3>What would you like to know about{' '}
-            <em>{item.source.title || item.metadata.architect || 'this building'}</em>?
+            <em>{displayTitle || 'this building'}</em>?
           </h3>
         </div>
 
@@ -326,7 +466,7 @@ export default function DetailView({
                 transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1] }}
               >
                 <span className="who">{m.who === 'user' ? 'You' : 'Visquery'}</span>
-                <div className="bubble">{m.text}</div>
+                <div className="bubble">{m.who === 'ai' ? renderBubble(m.text) : m.text}</div>
               </motion.div>
             ))}
             {thinking && (
@@ -352,13 +492,15 @@ export default function DetailView({
         </div>
 
         <div className="rag-input">
-          <div className="rag-suggest">
-            {STARTER_QS.map((q) => (
-              <button key={q} onClick={() => ask(q)}>
-                {q}
-              </button>
-            ))}
-          </div>
+          {msgs.length <= 1 && (
+            <div className="rag-suggest">
+              {STARTER_QS.map((q) => (
+                <button key={q} onClick={() => ask(q)}>
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="rag-input-row">
             <input
               value={draft}
@@ -378,6 +520,24 @@ export default function DetailView({
           </div>
         </div>
       </aside>
+
+      {/* Mobile tab bar — only visible on narrow screens via CSS */}
+      <div className="mobile-tabs">
+        <button
+          className={mobileTab === 'detail' ? 'is-active' : ''}
+          onClick={() => setMobileTab('detail')}
+        >
+          <Info size={13} />
+          Details
+        </button>
+        <button
+          className={mobileTab === 'chat' ? 'is-active' : ''}
+          onClick={() => setMobileTab('chat')}
+        >
+          <MessageSquare size={13} />
+          Ask AI
+        </button>
+      </div>
     </div>
   );
 }

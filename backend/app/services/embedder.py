@@ -55,10 +55,9 @@ def _load() -> None:
             if not path.exists():
                 raise FileNotFoundError(f"CLIP checkpoint not found: {path}")
             state = torch.load(path, map_location="cpu", weights_only=False)
-            # Checkpoint may use "model_state_dict" (training script) or "model" key
             state_dict = state.get("model_state_dict", state.get("model", state))
             model.load_state_dict(state_dict, strict=False)
-            log.info("embedder_custom_checkpoint_loaded")
+            log.info("embedder_finetuned_loaded")
 
         model.eval()
         # Keep on CPU — no .to("cuda") here

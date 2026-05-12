@@ -73,3 +73,5 @@ storage/metadata/*
 .env.docker.dev
 .env.docker.dev.example
 .env.example
+frontend/.env.local
+blog

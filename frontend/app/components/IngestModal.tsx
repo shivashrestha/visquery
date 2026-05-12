@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import { X, Upload, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { X, Upload, CheckCircle2, XCircle, Loader2, HardDrive, Globe } from 'lucide-react';
 import { uploadImage } from '@/lib/api';
+import { savePersonalImage, type PersonalImage } from '@/lib/personalImages';
 
 type ItemStatus = 'pending' | 'uploading' | 'done' | 'error';
 
@@ -18,22 +19,37 @@ interface IngestModalProps {
   onClose: () => void;
 }
 
+const MAX_IMAGES = 5;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function IngestModal({ onClose }: IngestModalProps) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [storeLocally, setStoreLocally] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const addFiles = useCallback((files: FileList | File[]) => {
-    const newItems: UploadItem[] = Array.from(files)
-      .filter((f) => f.type.startsWith('image/'))
-      .map((file) => ({
+    const newFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    setItems((prev) => {
+      const remaining = MAX_IMAGES - prev.length;
+      if (remaining <= 0) return prev;
+      const toAdd = newFiles.slice(0, remaining).map((file) => ({
         id: `${file.name}-${file.lastModified}-${Math.random()}`,
         file,
         preview: URL.createObjectURL(file),
-        status: 'pending',
+        status: 'pending' as ItemStatus,
       }));
-    setItems((prev) => [...prev, ...newItems]);
+      return [...prev, ...toAdd];
+    });
   }, []);
 
   const handleFileChange = useCallback(
@@ -70,29 +86,38 @@ export default function IngestModal({ onClose }: IngestModalProps) {
         prev.map((i) => (i.id === item.id ? { ...i, status: 'uploading' } : i)),
       );
       try {
-        const result = await uploadImage(item.file);
+        let imageId: string | undefined;
+        if (storeLocally) {
+          const dataUrl = await readFileAsDataUrl(item.file);
+          const personalImg: PersonalImage = {
+            id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            name: item.file.name,
+            dataUrl,
+            addedAt: Date.now(),
+          };
+          savePersonalImage(personalImg);
+          imageId = personalImg.id;
+        } else {
+          const result = await uploadImage(item.file);
+          imageId = result.image_id;
+        }
         setItems((prev) =>
-          prev.map((i) =>
-            i.id === item.id
-              ? { ...i, status: 'done', imageId: result.image_id }
-              : i,
-          ),
+          prev.map((i) => (i.id === item.id ? { ...i, status: 'done', imageId } : i)),
         );
       } catch {
         setItems((prev) =>
-          prev.map((i) =>
-            i.id === item.id ? { ...i, status: 'error' } : i,
-          ),
+          prev.map((i) => (i.id === item.id ? { ...i, status: 'error' } : i)),
         );
       }
     }
     setUploading(false);
-  }, [items]);
+  }, [items, storeLocally]);
 
   const pendingCount = items.filter((i) => i.status === 'pending').length;
   const doneCount = items.filter((i) => i.status === 'done').length;
   const errorCount = items.filter((i) => i.status === 'error').length;
   const uploadingItem = items.find((i) => i.status === 'uploading');
+  const atLimit = items.length >= MAX_IMAGES;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -107,7 +132,7 @@ export default function IngestModal({ onClose }: IngestModalProps) {
           <div>
             <h2 className="font-serif text-lg text-near-black">Ingest Images</h2>
             <p className="text-xs text-muted mt-0.5">
-              Upload architectural images to the database
+              Upload up to {MAX_IMAGES} architectural images
             </p>
           </div>
           <button
@@ -120,31 +145,85 @@ export default function IngestModal({ onClose }: IngestModalProps) {
           </button>
         </div>
 
+        {/* Storage toggle */}
+        <div className="mx-6 mt-4 flex-shrink-0">
+          <p className="text-xs text-muted uppercase tracking-wider font-medium mb-2">
+            Storage
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setStoreLocally(true)}
+              className={[
+                'flex items-center gap-2 px-3 py-2 rounded-sm text-xs border transition-colors flex-1',
+                storeLocally
+                  ? 'border-accent bg-amber-50/60 text-near-black'
+                  : 'border-border text-muted hover:border-accent/40',
+              ].join(' ')}
+            >
+              <HardDrive className="w-3.5 h-3.5 flex-shrink-0" />
+              <div className="text-left">
+                <div className="font-medium">Browser only</div>
+                <div className="text-muted mt-0.5 leading-tight">
+                  Stays in your browser. Not sent to any server.
+                </div>
+              </div>
+            </button>
+            <button
+              onClick={() => setStoreLocally(false)}
+              className={[
+                'flex items-center gap-2 px-3 py-2 rounded-sm text-xs border transition-colors flex-1',
+                !storeLocally
+                  ? 'border-accent bg-amber-50/60 text-near-black'
+                  : 'border-border text-muted hover:border-accent/40',
+              ].join(' ')}
+            >
+              <Globe className="w-3.5 h-3.5 flex-shrink-0" />
+              <div className="text-left">
+                <div className="font-medium">App storage</div>
+                <div className="text-muted mt-0.5 leading-tight">
+                  Indexed and searchable. Visible to all users.
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+
         {/* Drop zone */}
         <div
           className={[
-            'mx-6 mt-5 border-2 border-dashed rounded-sm p-7 text-center cursor-pointer transition-colors flex-shrink-0',
-            dragOver
-              ? 'border-accent bg-amber-50/40'
-              : 'border-border hover:border-accent/50 hover:bg-stone-50/60',
+            'mx-6 mt-4 border-2 border-dashed rounded-sm p-7 text-center transition-colors flex-shrink-0',
+            atLimit
+              ? 'border-border bg-surface/30 cursor-not-allowed opacity-60'
+              : dragOver
+                ? 'border-accent bg-amber-50/40 cursor-pointer'
+                : 'border-border hover:border-accent/50 hover:bg-stone-50/60 cursor-pointer',
           ].join(' ')}
           onDragOver={(e) => {
             e.preventDefault();
-            setDragOver(true);
+            if (!atLimit) setDragOver(true);
           }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
-          onClick={() => fileRef.current?.click()}
+          onClick={() => !atLimit && fileRef.current?.click()}
         >
           <Upload
             className={`w-6 h-6 mx-auto mb-2.5 transition-colors ${dragOver ? 'text-accent' : 'text-muted'}`}
           />
-          <p className="text-sm font-medium text-near-black">
-            Drop images here or click to browse
-          </p>
-          <p className="text-xs text-muted mt-1">
-            PNG, JPG, WEBP — multiple files supported
-          </p>
+          {atLimit ? (
+            <p className="text-sm font-medium text-near-black">
+              Maximum {MAX_IMAGES} images reached
+            </p>
+          ) : (
+            <>
+              <p className="text-sm font-medium text-near-black">
+                Drop images here or click to browse
+              </p>
+              <p className="text-xs text-muted mt-1">
+                PNG, JPG, WEBP — up to {MAX_IMAGES} images
+                {items.length > 0 && ` (${MAX_IMAGES - items.length} remaining)`}
+              </p>
+            </>
+          )}
         </div>
 
         <input
@@ -213,12 +292,12 @@ export default function IngestModal({ onClose }: IngestModalProps) {
             {items.length > 0 && (
               <span className="flex items-center gap-2 flex-wrap">
                 <span>
-                  {items.length} image{items.length !== 1 ? 's' : ''}
+                  {items.length}/{MAX_IMAGES} image{items.length !== 1 ? 's' : ''}
                 </span>
                 {uploadingItem && (
                   <span className="text-accent flex items-center gap-1">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    uploading…
+                    {storeLocally ? 'saving…' : 'uploading…'}
                   </span>
                 )}
                 {doneCount > 0 && (
@@ -253,7 +332,7 @@ export default function IngestModal({ onClose }: IngestModalProps) {
                 ].join(' ')}
               >
                 {uploading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                Upload {pendingCount} image{pendingCount !== 1 ? 's' : ''}
+                {storeLocally ? 'Save' : 'Upload'} {pendingCount} image{pendingCount !== 1 ? 's' : ''}
               </button>
             )}
           </div>
