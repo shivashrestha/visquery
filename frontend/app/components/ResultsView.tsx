@@ -234,6 +234,7 @@ export default function ResultsView({
             <SkeletonGrid />
           </div>
         )}
+
       </main>
     </div>
   );

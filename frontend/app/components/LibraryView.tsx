@@ -360,6 +360,7 @@ export default function LibraryView({ onOpen, favs, onFav }: LibraryViewProps) {
             <SkeletonGrid />
           </div>
         )}
+
       </main>
     </div>
   );
