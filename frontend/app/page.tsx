@@ -231,6 +231,7 @@ export default function HomePage() {
               </motion.div>
             </div>
 
+            <SiteFooter />
           </motion.main>
         )}
 
@@ -329,7 +330,6 @@ export default function HomePage() {
         )}
       </AnimatePresence>
 
-      <SiteFooter hideOnMobileDetail={view.name === 'detail'} />
     </div>
   );
 }

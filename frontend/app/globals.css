@@ -228,7 +228,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 32px 80px;
+  padding: 0px 32px 40px;
 }
 
 .hero-eyebrow {
@@ -241,15 +241,16 @@
 }
 .hero h1 {
   font-family: var(--serif);
-  font-weight: 500;
+  font-weight: 800;
   font-size: clamp(2.4rem, 5vw, 3.8rem);
   letter-spacing: -0.01em;
   line-height: 1.06;
   margin: 0 0 18px;
   text-align: center;
   color: var(--ink);
+  margin-top: -40px;
 }
-.hero h1 em { font-style: italic; font-weight: 400; color: var(--ink-soft); }
+.hero h1 em { font-style: italic; font-weight: 500; color: var(--ink-soft); }
 .hero p.lede {
   font-family: var(--serif);
   font-style: italic;
@@ -475,7 +476,7 @@
 
 /* ───────── Results main ───────── */
 .results-main {
-  padding: 22px 34px 80px;
+  padding: 22px 34px 60px;
   overflow-y: auto;
   background: var(--bg);
 }
@@ -762,7 +763,7 @@
   background: var(--accent);
 }
 .detail-main {
-  padding: 24px 36px 80px;
+  padding: 24px 36px 60px;
   overflow-y: auto;
 }
 .detail-back {
@@ -1083,7 +1084,7 @@
 
 /* ───────── Collections ───────── */
 .collections-main {
-  padding: 28px 36px 100px;
+  padding: 28px 36px 80px;
   overflow-y: auto;
   flex: 1;
 }
@@ -1546,23 +1547,20 @@
   display: none;
 }
 
-/* ───────── Site footer (fixed at device bottom) ───────── */
+/* ───────── Site footer (home page only, in-flow) ───────── */
 .site-footer {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  z-index: 10;
-  height: 40px;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 20px;
-  padding: 0 32px;
+  padding: 14px 32px;
   border-top: 1px solid var(--line-soft);
-  background: var(--bg);
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.08em;
   color: var(--ink-muted);
+  flex-shrink: 0;
 }
 .site-footer-link {
   background: none;
@@ -1602,13 +1600,12 @@
   .mobile-nav { display: flex; }
 
   /* Hero */
-  .hero-content { padding: 28px 20px 80px; }
+  .hero-content { padding: 28px 20px 24px; }
   .hero h1 { font-size: clamp(1.7rem, 7vw, 2.4rem); }
   .hero p.lede { font-size: 0.95rem; margin-bottom: 28px; }
   .search-wrap { gap: 12px; }
   .suggest-chip { font-size: 0.82rem; padding: 5px 11px; }
-  /* Hide site footer on mobile detail view (mobile-tabs owns that slot) */
-  .site-footer.detail-mode { display: none; }
+  .site-footer { padding: 12px 20px; gap: 14px; }
 
   /* Results layout — hide sidebar, go full width */
   .results-shell { grid-template-columns: 1fr; }
@@ -1737,7 +1734,7 @@
   .hdr { height: 52px; }
   .brand-name { font-size: 18px; }
 
-  .hero-content { padding: 20px 16px 80px; }
+  .hero-content { padding: 20px 16px 20px; }
   .suggest-row { gap: 6px; }
   .suggest-chip .style-tag { display: none; }
 
