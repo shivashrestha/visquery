@@ -6,6 +6,9 @@ export interface SearchRequest {
     typology?: string[];
     material?: string[];
     country?: string;
+    structural_system?: string[];
+    climate_zone?: string[];
+    style?: string[];
   };
   config?: string;
 }
@@ -94,6 +97,7 @@ export type FilterState = {
   material: string[];
   structural_system: string[];
   climate_zone: string[];
+  style: string[];
   location_country: string;
 };
 

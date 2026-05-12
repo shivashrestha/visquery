@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import Header, { type ViewName } from './components/Header';
@@ -47,9 +47,11 @@ export default function HomePage() {
   const [view, setView] = useState<AppView>({ name: 'home' });
   const [privacyOpen, setPrivacyOpen] = useState(false);
 
-  const exampleQueries = useMemo(() => {
+  const [exampleQueries, setExampleQueries] = useState<{ text: string; style: string }[]>([]);
+
+  useEffect(() => {
     const shuffled = [...architectureStyles].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, 6).map((s) => ({ text: s, style: shortStyleTag(s) }));
+    setExampleQueries(shuffled.slice(0, 6).map((s) => ({ text: s, style: shortStyleTag(s) })));
   }, []);
 
   // Favorites persisted in localStorage
