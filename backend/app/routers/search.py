@@ -32,7 +32,7 @@ class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=1000)
     image_id: Optional[uuid.UUID] = None
     filters: SearchFilters = Field(default_factory=SearchFilters)
-    score_threshold: float = Field(default=0.20, ge=0.0, le=1.0)
+    score_threshold: float = Field(default=0.10, ge=0.0, le=1.0)
 
 
 @router.post("/search")

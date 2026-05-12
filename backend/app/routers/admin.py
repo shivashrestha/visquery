@@ -7,14 +7,12 @@ from typing import Any, Optional
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, text
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.deps import get_db
-from app.models.building import Building
 from app.models.source import Image
-from app.models.feedback import Feedback
 from app.models.building import Base
 
 logger = structlog.get_logger()
@@ -23,9 +21,7 @@ router = APIRouter(tags=["admin"])
 
 
 class CorpusStats(BaseModel):
-    building_count: int
     image_count: int
-    feedback_count: int
     embedding_version: str
     last_ingest_at: Optional[str] = None
 
@@ -35,18 +31,11 @@ def get_stats(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> CorpusStats:
-    building_count = db.query(func.count(Building.id)).scalar() or 0
     image_count = db.query(func.count(Image.id)).scalar() or 0
-    feedback_count = db.query(func.count(Feedback.id)).scalar() or 0
-
-    # Latest ingestion time from images table
     latest = db.query(func.max(Image.created_at)).scalar()
     last_ingest_at = latest.isoformat() if latest else None
-
     return CorpusStats(
-        building_count=building_count,
         image_count=image_count,
-        feedback_count=feedback_count,
         embedding_version=settings.embedding_version,
         last_ingest_at=last_ingest_at,
     )
@@ -69,7 +58,7 @@ def test_vlm(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    """Synchronously run VLM captioning on an existing image. Returns caption or error detail."""
+    """Synchronously run VLM captioning on an existing image."""
     image = db.query(Image).filter(Image.id == image_id).first()
     if image is None:
         raise HTTPException(status_code=404, detail="Image not found")
@@ -97,6 +86,58 @@ def retry_caption(
     q = Queue("ingest", connection=redis.from_url(settings.redis_url))
     job = q.enqueue(complete_image_metadata, str(image_id))
     return {"job_id": job.id, "image_id": str(image_id)}
+
+
+@router.post("/admin/requeue-stuck")
+def requeue_stuck(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Re-enqueue all images stuck in 'processing' status."""
+    import redis
+    from rq import Queue
+    from app.workers.ingest_worker import complete_image_metadata
+
+    stuck = db.query(Image).filter(Image.ingest_status == "processing").all()
+    if not stuck:
+        return {"requeued": 0, "message": "No stuck images found"}
+
+    q = Queue("ingest", connection=redis.from_url(settings.redis_url))
+    job_ids = []
+    for img in stuck:
+        job = q.enqueue(complete_image_metadata, str(img.id))
+        job_ids.append({"image_id": str(img.id), "job_id": job.id})
+
+    return {"requeued": len(job_ids), "jobs": job_ids}
+
+
+@router.post("/admin/rebuild-faiss")
+def rebuild_faiss(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Rebuild FAISS index from all images in DB. Re-embeds every image."""
+    import numpy as np
+    from app.services.embedder import embed_image_from_path
+    from app.services.vector_store import get_clip_store
+    from app.workers.ingest_worker import _resolve_storage_path
+
+    images = db.query(Image).all()
+    clip_store = get_clip_store(settings.embedding_version, settings.faiss_data_dir)
+
+    indexed = 0
+    failed = 0
+    for img in images:
+        resolved = _resolve_storage_path(img.storage_path, settings)
+        try:
+            vec = embed_image_from_path(resolved)
+            clip_store.add(vec[np.newaxis, :], [str(img.id)])
+            indexed += 1
+        except Exception as exc:
+            logger.warning("rebuild_faiss_skip", image_id=str(img.id), error=str(exc))
+            failed += 1
+
+    return {"indexed": indexed, "failed": failed, "total": len(images)}
 
 
 @router.get("/jobs/{job_id}")

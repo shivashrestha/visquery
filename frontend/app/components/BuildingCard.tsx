@@ -1,9 +1,10 @@
 'use client';
 
-import Image from 'next/image';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Heart } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
+import CachedImage from './CachedImage';
 
 interface BuildingCardProps {
   result: SearchResultItem;
@@ -59,6 +60,7 @@ export default function BuildingCard({
   const { metadata, source, explanation } = result;
   const motif = getMotif(result);
   const [c1, c2, c3] = getColors(result);
+  const [imgFailed, setImgFailed] = useState(false);
 
   const matchTags = (result.tags ?? []).filter((t) =>
     queryTerms.some((q) => q && t.toLowerCase().includes(q.toLowerCase())),
@@ -78,20 +80,14 @@ export default function BuildingCard({
       }}
     >
       <div className="card-img">
-        {result.image_url ? (
-          <Image
+        {result.image_url && !imgFailed ? (
+          <CachedImage
             src={result.image_url}
             alt={metadata.architect ?? 'Building'}
             fill
             className="object-cover"
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            loading="lazy"
-            placeholder="blur"
-            blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN8/+F9PQAI8wNPvd7POQAAAABJRU5ErkJggg=="
-            onError={(e) => {
-              const el = e.currentTarget as HTMLImageElement;
-              el.style.display = 'none';
-            }}
+            sizes="(max-width: 480px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            onError={() => setImgFailed(true)}
           />
         ) : (
           <div

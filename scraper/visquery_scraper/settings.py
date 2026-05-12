@@ -105,6 +105,9 @@ DATABASE_URL = os.getenv(
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")  # 'local' | 'supabase'
 STORAGE_LOCAL_PATH = os.getenv("STORAGE_LOCAL_PATH", "./data/images")
 
+REDIS_URL = os.getenv("REDIS_URL", "")
+EMBEDDING_VERSION = os.getenv("EMBEDDING_VERSION", "2")
+
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "architecture-images")

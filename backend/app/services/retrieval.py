@@ -1,10 +1,10 @@
 """Retrieval pipeline — CLIP-only, no LLM stages.
 
 Pipeline:
-  1. Embed query (text or reference image) via finetuned CLIP checkpoint
+  1. Embed query (text or reference image) via CLIP
   2. FAISS inner-product search (cosine on L2-normalised vectors)
   3. Absolute score threshold filter
-  4. Hard metadata filters (optional)
+  4. Hard metadata filters (optional) — all on images table
   5. Fetch and return result metadata
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ logger = structlog.get_logger()
 
 class RetrievalConfig(BaseModel):
     use_filters: bool = True
-    score_threshold: float = 0.20   # absolute cosine similarity cutoff
+    score_threshold: float = 0.10
     top_k_retrieve: int = 100
     top_k_final: int = 20
 
@@ -50,42 +50,37 @@ def _apply_filters(
     from sqlalchemy import cast
     from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
     from sqlalchemy import Text
-    from app.models.building import Building
     from app.models.source import Image
 
     id_uuids = [uuid.UUID(i) for i in candidate_ids]
-    q = (
-        db.query(Image.id)
-        .outerjoin(Building, Building.id == Image.building_id)
-        .filter(Image.id.in_(id_uuids))
-    )
+    q = db.query(Image.id).filter(Image.id.in_(id_uuids))
 
     period = filters.get("period")
     if period and len(period) == 2:
         q = q.filter(
-            Building.year_built >= period[0],
-            Building.year_built <= period[1],
+            Image.year_built >= period[0],
+            Image.year_built <= period[1],
         )
 
     typology = filters.get("typology")
     if typology:
-        q = q.filter(Building.typology.op("&&")(cast(typology, PG_ARRAY(Text))))
+        q = q.filter(Image.typology.op("&&")(cast(typology, PG_ARRAY(Text))))
 
     material = filters.get("material")
     if material:
-        q = q.filter(Building.materials.op("&&")(cast(material, PG_ARRAY(Text))))
+        q = q.filter(Image.materials.op("&&")(cast(material, PG_ARRAY(Text))))
 
     country = filters.get("country")
     if country:
-        q = q.filter(Building.location_country == country)
+        q = q.filter(Image.location_country == country)
 
     climate_zone = filters.get("climate_zone")
     if climate_zone:
-        q = q.filter(Building.climate_zone == climate_zone)
+        q = q.filter(Image.climate_zone == climate_zone)
 
     structural_system = filters.get("structural_system")
     if structural_system:
-        q = q.filter(Building.structural_system == structural_system)
+        q = q.filter(Image.structural_system == structural_system)
 
     kept = {str(r.id) for r in q.all()}
     return [i for i in candidate_ids if i in kept]
@@ -94,45 +89,29 @@ def _apply_filters(
 def _fetch_result_metadata(
     image_ids: list[str],
     db: Session,
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, Any]:
     if not image_ids:
         return {}
 
-    from app.models.building import Building
-    from app.models.source import Image, Source
+    from app.models.source import Image
 
     id_uuids = [uuid.UUID(i) for i in image_ids]
-    rows = (
-        db.query(Image, Building, Source)
-        .outerjoin(Building, Building.id == Image.building_id)
-        .outerjoin(Source, Source.id == Image.source_id)
-        .filter(Image.id.in_(id_uuids))
-        .all()
-    )
-
-    result: dict[str, dict[str, Any]] = {}
-    for image, building, source in rows:
-        result[str(image.id)] = {
-            "image": image,
-            "building": building,
-            "source": source,
-        }
-    return result
+    rows = db.query(Image).filter(Image.id.in_(id_uuids)).all()
+    return {str(img.id): img for img in rows}
 
 
-def _building_to_dict(building) -> dict[str, Any]:
-    if building is None:
-        return {}
+def _image_to_metadata(img) -> dict[str, Any]:
     return {
-        "name": building.name,
-        "architect": building.architect,
-        "year_built": building.year_built,
-        "location_city": building.location_city,
-        "location_country": building.location_country,
-        "typology": building.typology,
-        "materials": building.materials,
-        "structural_system": building.structural_system,
-        "climate_zone": building.climate_zone,
+        "name": img.name,
+        "architect": img.architect,
+        "year_built": img.year_built,
+        "location_city": img.location_city,
+        "location_country": img.location_country,
+        "typology": img.typology or [],
+        "materials": img.materials or [],
+        "structural_system": img.structural_system,
+        "climate_zone": img.climate_zone,
+        "description": img.description or img.caption,
     }
 
 
@@ -189,6 +168,8 @@ async def run_retrieval(
 
     # 2. Absolute score threshold
     t = _tick()
+    if scores:
+        logger.info("clip_scores", top5=scores[:5], threshold=config.score_threshold)
     pairs = [
         (iid, score)
         for iid, score in zip(ids, scores)
@@ -219,29 +200,24 @@ async def run_retrieval(
     # 5. Build results
     results: list[dict[str, Any]] = []
     for iid in final_ids:
-        row = meta_map.get(iid, {})
-        building = row.get("building")
-        source = row.get("source")
-        image_obj = row.get("image")
-
+        img = meta_map.get(iid)
+        if img is None:
+            continue
         results.append({
-            "building_id": str(building.id) if building else None,
+            "building_id": None,
             "image_id": iid,
             "score": round(candidate_scores[iid], 4),
-            "metadata": _building_to_dict(building),
+            "metadata": _image_to_metadata(img),
             "source": {
-                "url": source.url if source else None,
-                "license": (
-                    image_obj.license
-                    if image_obj
-                    else (source.license if source else None)
-                ),
-                "photographer": image_obj.photographer if image_obj else None,
-                "license_url": image_obj.license_url if image_obj else None,
+                "url": img.source_url,
+                "title": img.source_title,
+                "license": img.license,
+                "photographer": img.photographer,
+                "license_url": img.license_url,
             },
             "image_url": f"/images/{iid}/raw",
-            "image_metadata": image_obj.metadata_json if image_obj else {},
-            "tags": image_obj.tags if image_obj else [],
+            "image_metadata": img.metadata_json or {},
+            "tags": img.tags or [],
         })
 
     latency["total"] = _elapsed(t_total)

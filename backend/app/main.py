@@ -18,7 +18,7 @@ from prometheus_client import (
 )
 
 from app.config import get_settings
-from app.routers import admin, feedback, images, search
+from app.routers import admin, images, search
 
 structlog.configure(
     processors=[
@@ -49,8 +49,7 @@ async def lifespan(app: FastAPI):
     from app.services.embedder import warmup, CLIP_EXECUTOR
     from app.deps import _get_engine
     from app.models.building import Base
-    import app.models.source  # noqa: F401 — register ORM classes on Base
-    import app.models.feedback  # noqa: F401 — register ORM classes on Base
+    import app.models.source  # noqa: F401 — register Image on Base
 
     settings = get_settings()
     engine = _get_engine(settings)
@@ -119,23 +118,7 @@ def create_app() -> FastAPI:
 
     app.include_router(search.router, prefix="/api")
     app.include_router(images.router, prefix="/api")
-    app.include_router(feedback.router, prefix="/api")
     app.include_router(admin.router, prefix="/api")
-
-    from fastapi import Depends, HTTPException
-    from app.deps import get_db
-    from app.models.building import Building, BuildingRead
-    from sqlalchemy.orm import Session
-
-    @app.get("/api/buildings/{building_id}", response_model=BuildingRead)
-    async def get_building(
-        building_id: uuid.UUID,
-        db: Session = Depends(get_db),
-    ) -> Building:
-        building = db.query(Building).filter(Building.id == building_id).first()
-        if building is None:
-            raise HTTPException(status_code=404, detail="Building not found")
-        return building
 
     @app.get("/health")
     async def health() -> dict:

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, LayoutGrid, List, ArrowUpDown, RefreshCw, Heart } from 'lucide-react';
+import { LayoutGrid, List, ArrowUpDown, RefreshCw, Heart } from 'lucide-react';
 import type { SearchResultItem, FilterState } from '@/lib/types';
 import type { LibraryResponse } from '@/lib/api';
 import { listImages } from '@/lib/api';
@@ -86,7 +86,6 @@ interface LibraryViewProps {
   onOpen: (item: SearchResultItem) => void;
   favs: Record<string, boolean>;
   onFav: (item: SearchResultItem) => void;
-  onAdd: () => void;
 }
 
 function SkeletonGrid() {
@@ -103,7 +102,7 @@ function SkeletonGrid() {
   );
 }
 
-export default function LibraryView({ onOpen, favs, onFav, onAdd }: LibraryViewProps) {
+export default function LibraryView({ onOpen, favs, onFav }: LibraryViewProps) {
   const [items, setItems] = useState<SearchResultItem[]>([]);
   const [total, setTotal] = useState(0);
   const [skip, setSkip] = useState(0);
@@ -205,12 +204,6 @@ export default function LibraryView({ onOpen, favs, onFav, onAdd }: LibraryViewP
           </div>
 
           <div className="results-meta">
-            {/* Add button */}
-            <button className="btn-ghost" onClick={onAdd} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Plus size={12} />
-              Add
-            </button>
-
             {/* Sort dropdown */}
             <div style={{ position: 'relative' }}>
               <button

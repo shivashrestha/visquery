@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import type { SearchResultItem } from '@/lib/types';
 import BuildingCard from './BuildingCard';
 import { search } from '@/lib/api';
+import { getPersonalImages, personalImageToResultItem } from '@/lib/personalImages';
 
 interface CollectionsViewProps {
   favItems: SearchResultItem[];
@@ -44,6 +45,12 @@ const ARCHITECTURE_STYLES = [
 export default function CollectionsView({ favItems, onOpen, favs, onFav }: CollectionsViewProps) {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [personalItems, setPersonalItems] = useState<SearchResultItem[]>([]);
+
+  useEffect(() => {
+    const imgs = getPersonalImages();
+    setPersonalItems(imgs.map(personalImageToResultItem));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +81,11 @@ export default function CollectionsView({ favItems, onOpen, favs, onFav }: Colle
     return () => { cancelled = true; };
   }, [favItems]);
 
+  const allCollections: Collection[] = [
+    ...(personalItems.length > 0 ? [{ name: 'Personal', items: personalItems }] : []),
+    ...collections,
+  ];
+
   return (
     <main className="collections-main fade-in">
       <div className="results-bar">
@@ -82,7 +94,7 @@ export default function CollectionsView({ favItems, onOpen, favs, onFav }: Colle
           <p className="q">Browse by architectural style</p>
         </div>
         <span className="results-meta">
-          {collections.length} collections
+          {allCollections.length} collections
         </span>
       </div>
 
@@ -92,7 +104,7 @@ export default function CollectionsView({ favItems, onOpen, favs, onFav }: Colle
         </div>
       )}
 
-      {collections.map((col, ci) => (
+      {allCollections.map((col, ci) => (
         <motion.section
           key={col.name}
           className="collection-section"
@@ -101,7 +113,26 @@ export default function CollectionsView({ favItems, onOpen, favs, onFav }: Colle
           transition={{ delay: ci * 0.05, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
         >
           <div className="collection-head">
-            <h3>{col.name}</h3>
+            <h3>
+              {col.name === 'Personal' ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {col.name}
+                  <span style={{
+                    fontFamily: 'var(--mono)',
+                    fontSize: '9px',
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    color: 'var(--ink-muted)',
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '2px',
+                    padding: '2px 5px',
+                  }}>
+                    Browser only
+                  </span>
+                </span>
+              ) : col.name}
+            </h3>
             <span className="collection-count">{col.items.length} items</span>
           </div>
 

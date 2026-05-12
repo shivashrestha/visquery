@@ -1,13 +1,14 @@
 /** @type {import('next').NextConfig} */
-const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:8000';
+const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:18001';
 
 const nextConfig = {
   images: {
+    minimumCacheTTL: 86400,
     remotePatterns: [
       {
         protocol: 'http',
         hostname: 'localhost',
-        port: '8000',
+        port: '18001',
         pathname: '/api/images/**',
       },
       {

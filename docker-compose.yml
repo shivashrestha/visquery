@@ -5,10 +5,13 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ${DOCKER_ENV_FILE:-.env}
+    environment:
+      HF_HOME: /opt/hf-cache
+      HF_HUB_OFFLINE: "1"
     ports:
       - "18001:8000"
     volumes:
-      - ${STORAGE_ROOT:-./storage}:/data
+      - ${STORAGE_HOST_PATH:-./storage}:/data
       - ./storage/data/checkpoints:/data/checkpoints:ro
     depends_on:
       postgres:
@@ -34,8 +37,11 @@ services:
     command: ["rq", "worker", "--with-scheduler", "--url", "${REDIS_URL}", "ingest"]
     env_file:
       - ${DOCKER_ENV_FILE:-.env}
+    environment:
+      HF_HOME: /opt/hf-cache
+      HF_HUB_OFFLINE: "1"
     volumes:
-      - ${STORAGE_ROOT:-./storage}:/data
+      - ${STORAGE_HOST_PATH:-./storage}:/data
       - ./storage/data/checkpoints:/data/checkpoints:ro
     depends_on:
       postgres:
@@ -48,15 +54,41 @@ services:
         limits:
           memory: 1500M
 
+  ingest:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.ingest.main"]
+    env_file:
+      - ${DOCKER_ENV_FILE:-.env}
+    environment:
+      RAW_DATA_DIR: /raw_data
+    volumes:
+      - ${STORAGE_HOST_PATH:-./storage}:/data
+      - ./storage/data/checkpoints:/data/checkpoints:ro
+      - ./ingestion/raw_data:/raw_data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["ingest"]
+    deploy:
+      resources:
+        limits:
+          memory: 1500M
+
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-visquery}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
       POSTGRES_DB: ${POSTGRES_DB:-visquery}
+    ports:
+      - "15432:5432"
     volumes:
       - ${POSTGRES_DATA_PATH:-./storage/postgres}:/var/lib/postgresql/data
-      - ./backend/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     restart: unless-stopped
     deploy:
       resources:
