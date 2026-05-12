@@ -8,6 +8,8 @@ services:
     environment:
       HF_HOME: /opt/hf-cache
       HF_HUB_OFFLINE: "1"
+      STORAGE_ROOT: /data
+      FAISS_DATA_DIR: /data/vectors
     ports:
       - "18001:8000"
     volumes:
@@ -40,6 +42,8 @@ services:
     environment:
       HF_HOME: /opt/hf-cache
       HF_HUB_OFFLINE: "1"
+      STORAGE_ROOT: /data
+      FAISS_DATA_DIR: /data/vectors
     volumes:
       - ${STORAGE_HOST_PATH:-./storage}:/data
       - ./storage/data/checkpoints:/data/checkpoints:ro
@@ -63,6 +67,8 @@ services:
       - ${DOCKER_ENV_FILE:-.env}
     environment:
       RAW_DATA_DIR: /raw_data
+      STORAGE_ROOT: /data
+      FAISS_DATA_DIR: /data/vectors
     volumes:
       - ${STORAGE_HOST_PATH:-./storage}:/data
       - ./storage/data/checkpoints:/data/checkpoints:ro

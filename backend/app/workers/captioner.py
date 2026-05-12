@@ -115,10 +115,12 @@ def caption_image(
     storage_path: str,
     settings,
     image_vec: Optional[np.ndarray] = None,
+    classify_style: bool = True,
 ) -> dict[str, Any]:
     """Generate title, description, raw_text from image via VLM.
 
-    Pass image_vec (L2-normalized CLIP embedding) to avoid double inference.
+    Pass image_vec to avoid duplicate CLIP inference.
+    Set classify_style=False to skip style classification entirely (no CLIP load).
     """
     path = Path(storage_path)
     if not path.exists():
@@ -154,12 +156,16 @@ def caption_image(
     result = _parse_json_safe(raw)
     result["method"] = f"ollama/{settings.ollama_vlm_model}"
 
-    try:
-        style_result = classify_architecture_style(storage_path, image_vec=image_vec)
-        result.update(style_result)
-        logger.info("style_classified", style=style_result.get("architecture_style_classified"))
-    except Exception as exc:
-        logger.warning("style_classification_failed", error=str(exc))
+    if classify_style:
+        try:
+            style_result = classify_architecture_style(storage_path, image_vec=image_vec)
+            result.update(style_result)
+            logger.info("style_classified", style=style_result.get("architecture_style_classified"))
+        except Exception as exc:
+            logger.warning("style_classification_failed", error=str(exc))
+            result["architecture_style_classified"] = ""
+            result["architecture_style_top"] = []
+    else:
         result["architecture_style_classified"] = ""
         result["architecture_style_top"] = []
 
