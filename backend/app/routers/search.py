@@ -24,8 +24,9 @@ class SearchFilters(BaseModel):
     typology: Optional[list[str]] = None
     material: Optional[list[str]] = None
     country: Optional[str] = None
-    climate_zone: Optional[str] = None
-    structural_system: Optional[str] = None
+    climate_zone: Optional[list[str]] = None
+    structural_system: Optional[list[str]] = None
+    style: Optional[list[str]] = None
 
 
 class SearchRequest(BaseModel):

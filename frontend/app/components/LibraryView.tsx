@@ -118,6 +118,7 @@ export default function LibraryView({ onOpen, favs, onFav }: LibraryViewProps) {
     material: [],
     structural_system: [],
     climate_zone: [],
+    style: [],
     location_country: '',
   });
 
@@ -185,6 +186,7 @@ export default function LibraryView({ onOpen, favs, onFav }: LibraryViewProps) {
           filters.material.length +
           filters.structural_system.length +
           filters.climate_zone.length +
+          filters.style.length +
           (filters.location_country ? 1 : 0)
         }
         corpus={items}

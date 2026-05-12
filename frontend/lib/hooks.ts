@@ -20,6 +20,7 @@ export const DEFAULT_FILTERS: FilterState = {
   material: [],
   structural_system: [],
   climate_zone: [],
+  style: [],
   location_country: '',
 };
 
@@ -33,6 +34,9 @@ function filtersToSearchFilters(
   if (filters.typology.length > 0) f.typology = filters.typology;
   if (filters.material.length > 0) f.material = filters.material;
   if (filters.location_country) f.country = filters.location_country;
+  if (filters.structural_system.length > 0) f.structural_system = filters.structural_system;
+  if (filters.climate_zone.length > 0) f.climate_zone = filters.climate_zone;
+  if (filters.style.length > 0) f.style = filters.style;
   return f;
 }
 
@@ -152,6 +156,7 @@ export function useSearch() {
     (filters.material.length > 0 ? 1 : 0) +
     (filters.structural_system.length > 0 ? 1 : 0) +
     (filters.climate_zone.length > 0 ? 1 : 0) +
+    (filters.style.length > 0 ? 1 : 0) +
     (filters.location_country ? 1 : 0) +
     (filters.period[0] !== 0 || filters.period[1] !== 2024 ? 1 : 0);
 

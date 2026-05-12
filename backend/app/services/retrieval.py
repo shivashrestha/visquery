@@ -47,9 +47,7 @@ def _apply_filters(
     if not filters or not candidate_ids:
         return candidate_ids
 
-    from sqlalchemy import cast
-    from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
-    from sqlalchemy import Text
+    from sqlalchemy import func, or_
     from app.models.source import Image
 
     id_uuids = [uuid.UUID(i) for i in candidate_ids]
@@ -62,25 +60,50 @@ def _apply_filters(
             Image.year_built <= period[1],
         )
 
+    # Typology: VLM outputs varied phrases (e.g. "government building", "abbey").
+    # Use contains matching on the joined array string so "religious" matches
+    # ["Abbey", "Religious", "Monastery"] and "office" matches ["government building", "office"].
     typology = filters.get("typology")
     if typology:
-        q = q.filter(Image.typology.op("&&")(cast(typology, PG_ARRAY(Text))))
+        typology_lower = [v.lower() for v in typology]
+        joined_typology = func.lower(func.array_to_string(Image.typology, ","))
+        q = q.filter(or_(*[joined_typology.ilike(f"%{v}%") for v in typology_lower]))
 
+    # Materials: case-insensitive contains on joined array string
     material = filters.get("material")
     if material:
-        q = q.filter(Image.materials.op("&&")(cast(material, PG_ARRAY(Text))))
+        material_lower = [v.lower() for v in material]
+        joined_materials = func.lower(func.array_to_string(Image.materials, ","))
+        q = q.filter(or_(*[joined_materials.ilike(f"%{v}%") for v in material_lower]))
 
     country = filters.get("country")
     if country:
-        q = q.filter(Image.location_country == country)
+        q = q.filter(func.lower(Image.location_country) == country.lower())
 
-    climate_zone = filters.get("climate_zone")
-    if climate_zone:
-        q = q.filter(Image.climate_zone == climate_zone)
-
+    # structural_system is free text — use ILIKE contains for any selected category
     structural_system = filters.get("structural_system")
     if structural_system:
-        q = q.filter(Image.structural_system == structural_system)
+        values = structural_system if isinstance(structural_system, list) else [structural_system]
+        q = q.filter(or_(*[
+            Image.structural_system.ilike(f"%{v.replace('_', ' ')}%")
+            for v in values
+        ]))
+
+    # climate_zone may be free text or short keyword — ILIKE contains
+    climate_zone = filters.get("climate_zone")
+    if climate_zone:
+        zones = climate_zone if isinstance(climate_zone, list) else [climate_zone]
+        q = q.filter(or_(*[
+            Image.climate_zone.ilike(f"%{z.replace('_', ' ')}%")
+            for z in zones
+        ]))
+
+    # Architectural style: matched against VLM-classified style in metadata_json JSONB
+    style = filters.get("style")
+    if style:
+        style_lower = [v.lower() for v in style]
+        style_field = func.lower(Image.metadata_json["architecture_style_classified"].astext)
+        q = q.filter(or_(*[style_field.ilike(f"%{v}%") for v in style_lower]))
 
     kept = {str(r.id) for r in q.all()}
     return [i for i in candidate_ids if i in kept]
