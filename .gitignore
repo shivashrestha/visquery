@@ -75,3 +75,4 @@ storage/metadata/*
 .env.example
 frontend/.env.local
 blog
+visquery_ingestion

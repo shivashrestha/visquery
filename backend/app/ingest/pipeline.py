@@ -89,7 +89,7 @@ def ingest_image(image_path: Path, settings) -> dict[str, Any]:
     # ── 2. VLM caption ───────────────────────────────────────────────
     log.info("ingest_captioning")
     try:
-        caption_data = caption_image(str(image_path), settings, image_vec=None)
+        caption_data = caption_image(str(image_path), settings, image_vec=None, classify_style=False)
         log.info("ingest_captioned", title=caption_data.get("title", "")[:60])
     except Exception as exc:
         log.warning("ingest_caption_failed", error=str(exc))
