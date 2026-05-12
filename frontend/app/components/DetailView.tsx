@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CachedImage from './CachedImage';
-import { ArrowLeft, Heart, ExternalLink, MessageSquare, Info } from 'lucide-react';
+import { ArrowLeft, Heart, ExternalLink, MessageSquare, Info, Sparkles } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
 import BuildingCard from './BuildingCard';
 import { chatImage } from '@/lib/api';
@@ -233,18 +233,6 @@ export default function DetailView({
           <ArrowLeft size={11} /> Back to results
         </button>
 
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '7px',
-          padding: '7px 12px', marginBottom: '14px',
-          background: 'rgba(30,28,24,0.04)',
-          border: '1px solid rgba(30,28,24,0.09)',
-          borderRadius: '4px', fontSize: '11px', color: 'var(--ink-faint)',
-          fontFamily: 'var(--mono)', lineHeight: 1.4,
-        }}>
-          <span style={{ opacity: 0.45, fontSize: '9px' }}>✦</span>
-          Descriptions, style classification, and metadata are AI-generated — information may not be exact or fully accurate.
-        </div>
-
         {/* Hero image */}
         <motion.div className="detail-hero" layoutId={`hero-${item.image_id}`}>
           <AnimatePresence mode="wait">
@@ -309,6 +297,15 @@ export default function DetailView({
 
         {/* Detail grid */}
         <div className="detail-grid">
+          <div className="detail-ai-row">
+            <div
+              className="ai-badge"
+              data-tooltip="AI-generated · descriptions and metadata may not be fully accurate"
+            >
+              <Sparkles size={11} />
+            </div>
+          </div>
+
           <div className="detail-section">
             <h4>Description</h4>
             {displayDescription ? (
@@ -439,6 +436,7 @@ export default function DetailView({
             </div>
           </div>
         )}
+
       </div>
 
       {/* Resize handle — hidden on mobile */}
@@ -453,17 +451,6 @@ export default function DetailView({
       {/* RAG sidebar */}
       <aside className={`rag${mobileTab === 'detail' ? '' : ' mobile-visible'}`}>
         <div className="rag-head">
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: '5px',
-            padding: '2px 9px', marginBottom: '8px',
-            background: 'rgba(30,28,24,0.06)',
-            border: '1px solid rgba(30,28,24,0.11)',
-            borderRadius: '20px', fontSize: '10px', color: 'var(--ink-faint)',
-            fontFamily: 'var(--mono)', letterSpacing: '0.04em',
-          }}>
-            <span style={{ fontSize: '8px', opacity: 0.6 }}>✦</span>
-            AI · Responses are generated and may vary
-          </div>
           <div className="lbl">Ask about this image</div>
           <h3>What would you like to know about{' '}
             <em>{displayTitle || 'this building'}</em>?
@@ -480,7 +467,10 @@ export default function DetailView({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1] }}
               >
-                <span className="who">{m.who === 'user' ? 'You' : 'Visquery'}</span>
+                <span className={`who${m.who === 'ai' ? ' ai-who' : ''}`}>
+                  {m.who === 'ai' && <Sparkles size={9} className="ai-icon" />}
+                  {m.who === 'user' ? 'You' : 'Visquery'}
+                </span>
                 <div className="bubble">{m.who === 'ai' ? renderBubble(m.text) : m.text}</div>
               </motion.div>
             ))}
@@ -492,7 +482,10 @@ export default function DetailView({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
               >
-                <span className="who">Visquery</span>
+                <span className="who ai-who">
+                  <Sparkles size={9} className="ai-icon" />
+                  Visquery
+                </span>
                 <div className="bubble">
                   <span className="thinking">
                     reading sources{' '}

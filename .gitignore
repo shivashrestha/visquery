@@ -76,3 +76,6 @@ storage/metadata/*
 frontend/.env.local
 blog
 visquery_ingestion
+ingestion/scripts/architecture_styles.json
+ingestion/scripts/scrap-images-wikimedia.py
+backend/scripts/purge_all_data.py

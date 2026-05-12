@@ -158,6 +158,7 @@ export default function CollectionsView({ favItems, onOpen, favs, onFav }: Colle
           )}
         </motion.section>
       ))}
+
     </main>
   );
 }

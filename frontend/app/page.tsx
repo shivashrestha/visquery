@@ -4,7 +4,8 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import Header, { type ViewName } from './components/Header';
-import PrivacyModal from './components/PrivacyModal';
+
+import SiteFooter from './components/SiteFooter';
 import SearchBar from './components/SearchBar';
 import ResultsView from './components/ResultsView';
 import DetailView from './components/DetailView';
@@ -45,7 +46,6 @@ const chipsVariants = {
 
 export default function HomePage() {
   const [view, setView] = useState<AppView>({ name: 'home' });
-  const [privacyOpen, setPrivacyOpen] = useState(false);
 
   const [exampleQueries, setExampleQueries] = useState<{ text: string; style: string }[]>([]);
 
@@ -179,61 +179,56 @@ export default function HomePage() {
             animate="show"
             exit={{ opacity: 0, y: -10, transition: { duration: 0.2 } }}
           >
-            <motion.div variants={heroItem} style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
-              <Image
-                src="/app-logo.png"
-                alt="Visquery"
-                width={300}
-                height={300}
-                quality={100}
-                unoptimized
-                style={{ objectFit: 'contain' }}
-                priority
-              />
-            </motion.div>
-
-            <motion.h1 variants={heroItem}>
-              Search architectural precedents
-              <br />
-              <em>by style, form,</em> or <em>reference image.</em>
-            </motion.h1>
-            <motion.p className="lede" variants={heroItem}>
-              Describe a spatial quality, a structural system, or an ornamental period —
-              or upload a reference image. Visquery uses AI vision to match and classify
-              buildings across historic and contemporary architectural styles, then explains
-              what it finds.
-            </motion.p>
-
-            <motion.div className="search-wrap" variants={heroItem}>
-              <SearchBar
-                onSearch={handleSearch}
-                onImageSearch={handleImageSearch}
-                loading={loading}
-                initialQuery=""
-                large
-              />
-              <motion.div className="suggest-row" variants={chipsVariants}>
-                {exampleQueries.map((q) => (
-                  <motion.button
-                    key={q.text}
-                    className="suggest-chip"
-                    variants={heroItem}
-                    whileHover={{ y: -2, transition: { duration: 0.15 } }}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={() => handleSearch(q.text)}
-                  >
-                    {q.text}
-                    <span className="style-tag">{q.style}</span>
-                  </motion.button>
-                ))}
+            <div className="hero-content">
+              <motion.div variants={heroItem} style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+                <Image
+                  src="/app-logo.png"
+                  alt="Visquery"
+                  width={300}
+                  height={300}
+                  quality={100}
+                  unoptimized
+                  style={{ objectFit: 'contain' }}
+                  priority
+                />
               </motion.div>
-            </motion.div>
 
-            <div className="landing-footer">
-              <span>© {new Date().getFullYear()} Visquery · visquery.com</span>
-              <button className="landing-footer-link" onClick={() => setPrivacyOpen(true)}>
-                Privacy Policy
-              </button>
+              <motion.h1 variants={heroItem}>
+                Search architectural precedents
+                <br />
+                <em>by style, form,</em> or <em>reference image.</em>
+              </motion.h1>
+              <motion.p className="lede" variants={heroItem}>
+                Describe a spatial quality, a structural system, or an ornamental period —
+                or upload a reference image. Visquery uses AI vision to match and classify
+                buildings across historic and contemporary architectural styles, then explains
+                what it finds.
+              </motion.p>
+
+              <motion.div className="search-wrap" variants={heroItem}>
+                <SearchBar
+                  onSearch={handleSearch}
+                  onImageSearch={handleImageSearch}
+                  loading={loading}
+                  initialQuery=""
+                  large
+                />
+                <motion.div className="suggest-row" variants={chipsVariants}>
+                  {exampleQueries.map((q) => (
+                    <motion.button
+                      key={q.text}
+                      className="suggest-chip"
+                      variants={heroItem}
+                      whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => handleSearch(q.text)}
+                    >
+                      {q.text}
+                      <span className="style-tag">{q.style}</span>
+                    </motion.button>
+                  ))}
+                </motion.div>
+              </motion.div>
             </div>
 
           </motion.main>
@@ -334,7 +329,7 @@ export default function HomePage() {
         )}
       </AnimatePresence>
 
-      {privacyOpen && <PrivacyModal onClose={() => setPrivacyOpen(false)} />}
+      <SiteFooter hideOnMobileDetail={view.name === 'detail'} />
     </div>
   );
 }
