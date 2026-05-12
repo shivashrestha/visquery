@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import type { Building } from '@/lib/types';
 import { getImageUrl } from '@/lib/api';
 
@@ -21,15 +21,6 @@ async function fetchBuilding(id: string): Promise<Building | null> {
   } catch {
     return null;
   }
-}
-
-function LicenseBadge({ license }: { license: string }) {
-  const label = license.replace(/_/g, ' ').replace(/^CC /, 'CC ');
-  return (
-    <span className="inline-block text-2xs font-medium text-muted border border-border rounded px-1.5 py-0.5 uppercase tracking-wide">
-      {label}
-    </span>
-  );
 }
 
 function MetaRow({ label, value }: { label: string; value: string }) {
@@ -137,9 +128,14 @@ async function BuildingDetail({ id, query, explanation }: { id: string; query?: 
           )}
 
           {building.description && (
-            <p className="text-sm leading-relaxed text-near-black/80 mb-6 border-b border-border pb-6">
-              {building.description}
-            </p>
+            <div className="mb-6 border-b border-border pb-6">
+              <p className="text-sm leading-relaxed text-near-black/80 mb-2">
+                {building.description}
+              </p>
+              <p className="text-2xs text-muted font-mono" style={{ fontSize: '10px', opacity: 0.7 }}>
+                ✦ AI-generated description · Claude (Anthropic) · may not be fully accurate
+              </p>
+            </div>
           )}
 
           <dl className="mb-6">
@@ -176,37 +172,25 @@ async function BuildingDetail({ id, query, explanation }: { id: string; query?: 
             )}
           </dl>
 
-          {building.images.length > 0 && (
-            <div className="border-t border-border pt-4 space-y-3">
-              <p className="text-xs uppercase tracking-wider text-muted font-medium">
-                Sources
-              </p>
-              {building.images.map((img) => (
-                <div key={img.id} className="text-xs text-muted space-y-1">
-                  {img.source.title && (
-                    <p className="text-near-black text-sm">{img.source.title}</p>
-                  )}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <LicenseBadge license={img.license} />
-                    {img.photographer && (
-                      <span>Photo: {img.photographer}</span>
-                    )}
-                  </div>
-                  {img.source.url && (
-                    <a
-                      href={img.source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-accent hover:underline"
-                    >
-                      Open original
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="border-t border-border pt-4">
+            <p className="text-xs uppercase tracking-wider text-muted font-medium mb-2">
+              Description source
+            </p>
+            <p className="text-xs text-muted font-mono">
+              Claude (Anthropic) · AI Vision Model
+            </p>
+            <p className="text-xs text-muted mt-1" style={{ lineHeight: 1.5 }}>
+              All descriptions and metadata are AI-generated and may not be exact or fully accurate.
+            </p>
+            {building.images.some((img) => img.photographer) && (
+              <div className="mt-3 space-y-1">
+                <p className="text-xs uppercase tracking-wider text-muted font-medium">Photography</p>
+                {building.images.filter((img) => img.photographer).map((img) => (
+                  <p key={img.id} className="text-xs text-muted">{img.photographer}</p>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </article>

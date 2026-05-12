@@ -12,6 +12,16 @@ import CollectionsView from './components/CollectionsView';
 import LibraryView from './components/LibraryView';
 import { useSearch } from '@/lib/hooks';
 import type { SearchResultItem } from '@/lib/types';
+import architectureStyles from './architecture_styles.json';
+
+function shortStyleTag(style: string): string {
+  return style
+    .replace(/ architecture$/i, '')
+    .replace(/ style$/i, '')
+    .split(' ')
+    .slice(0, 2)
+    .join(' ');
+}
 
 type AppView =
   | { name: 'home' }
@@ -36,6 +46,11 @@ const chipsVariants = {
 export default function HomePage() {
   const [view, setView] = useState<AppView>({ name: 'home' });
   const [privacyOpen, setPrivacyOpen] = useState(false);
+
+  const exampleQueries = useMemo(() => {
+    const shuffled = [...architectureStyles].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 6).map((s) => ({ text: s, style: shortStyleTag(s) }));
+  }, []);
 
   // Favorites persisted in localStorage
   const [favItems, setFavItems] = useState<Record<string, SearchResultItem>>(() => {
@@ -176,13 +191,15 @@ export default function HomePage() {
             </motion.div>
 
             <motion.h1 variants={heroItem}>
-              Find architecture <em>by description,</em>
+              Search architectural precedents
               <br />
-              <em>by image,</em> by feeling.
+              <em>by style, form,</em> or <em>reference image.</em>
             </motion.h1>
             <motion.p className="lede" variants={heroItem}>
-              Describe the style you almost remember — the form, the ornament, the period.
-              Visquery searches indexed buildings and explains what it finds.
+              Describe a spatial quality, a structural system, or an ornamental period —
+              or upload a reference image. Visquery uses AI vision to match and classify
+              buildings across historic and contemporary architectural styles, then explains
+              what it finds.
             </motion.p>
 
             <motion.div className="search-wrap" variants={heroItem}>
@@ -194,7 +211,7 @@ export default function HomePage() {
                 large
               />
               <motion.div className="suggest-row" variants={chipsVariants}>
-                {EXAMPLE_QUERIES.map((q) => (
+                {exampleQueries.map((q) => (
                   <motion.button
                     key={q.text}
                     className="suggest-chip"
@@ -320,11 +337,3 @@ export default function HomePage() {
   );
 }
 
-const EXAMPLE_QUERIES: { text: string; style: string }[] = [
-  { text: 'Art Deco architecture', style: 'Deco' },
-  { text: 'Bauhaus architecture', style: 'Bauhaus' },
-  { text: 'Gothic architecture', style: 'Gothic' },
-  { text: 'Deconstructivism', style: 'Decon' },
-  { text: 'Byzantine architecture', style: 'Byzantine' },
-  { text: 'Art Nouveau architecture', style: 'Nouveau' },
-];
