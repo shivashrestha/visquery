@@ -125,7 +125,7 @@ export function useSearch() {
     [hasSearched, query, imageId, runSearch],
   );
 
-  const submitByImage = useCallback(async (file: File) => {
+  const submitByImage = useCallback(async (file: File): Promise<void> => {
     setQuery('');
     setImageId(undefined);
     setPage(1);

@@ -7,8 +7,9 @@ import uuid
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, Security, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     Counter,
@@ -18,7 +19,7 @@ from prometheus_client import (
 )
 
 from app.config import get_settings
-from app.routers import admin, images, search
+from app.routers import admin, images, search, contact
 
 structlog.configure(
     processors=[
@@ -104,7 +105,7 @@ def create_app() -> FastAPI:
             from fastapi.responses import JSONResponse
             return JSONResponse(
                 status_code=500,
-                content={"detail": str(exc)},
+                content={"detail": "Internal server error"},
                 headers={"X-Request-ID": request_id},
             )
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
@@ -116,9 +117,26 @@ def create_app() -> FastAPI:
         response.headers["X-Request-ID"] = request_id
         return response
 
+    _admin_key_header = APIKeyHeader(name="X-Admin-Key", auto_error=False)
+
+    def _verify_admin(
+        key: str | None = Security(_admin_key_header),
+    ) -> None:
+        if not settings.admin_secret:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Admin access not configured.",
+            )
+        if key != settings.admin_secret:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing admin key.",
+            )
+
     app.include_router(search.router, prefix="/api")
     app.include_router(images.router, prefix="/api")
-    app.include_router(admin.router, prefix="/api")
+    app.include_router(admin.router, prefix="/api", dependencies=[Depends(_verify_admin)])
+    app.include_router(contact.router, prefix="/api")
 
     @app.get("/health")
     async def health() -> dict:

@@ -37,7 +37,9 @@ const FACETS: Facet[] = [
     filterKey: 'style',
     isArray: false,
     matchMode: 'contains',
-    getVal: (item) => item.image_metadata?.architecture_style_classified as string | undefined,
+    getVal: (item) =>
+      (item.artifacts_json?.style?.primary as string | undefined) ??
+      (item.image_metadata?.architecture_style_classified as string | undefined),
   },
   {
     key: 'typology',

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Sun, Moon } from 'lucide-react';
+import VQLogo from './VQLogo';
 
 export type ViewName = 'home' | 'results' | 'library' | 'collections' | 'detail';
 
@@ -10,9 +10,11 @@ interface HeaderProps {
   view: ViewName;
   onNav: (v: ViewName) => void;
   resultCount?: number;
+  theme?: 'monograph' | 'dark';
+  onToggleTheme?: () => void;
 }
 
-export default function Header({ view, onNav, resultCount }: HeaderProps) {
+export default function Header({ view, onNav, resultCount, theme, onToggleTheme }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleNav = (v: ViewName) => {
@@ -25,19 +27,7 @@ export default function Header({ view, onNav, resultCount }: HeaderProps) {
       <header className="hdr">
         <div className="hdr-left">
           <div className="brand" onClick={() => handleNav('home')}>
-            <Image
-              src="/app-logo.png"
-              alt="Visquery"
-              width={100}
-              height={100}
-              quality={100}
-              unoptimized
-              style={{ objectFit: 'contain', flexShrink: 0 }}
-            />
-            <div className="brand-text">
-              <span className="brand-name">Visquery</span>
-              <span className="brand-sub">Visual query for architecture styles</span>
-            </div>
+            <VQLogo variant="header" />
           </div>
           <nav className="hdr-nav">
             <button
@@ -64,6 +54,19 @@ export default function Header({ view, onNav, resultCount }: HeaderProps) {
           <span className="hdr-meta">
             {resultCount !== undefined ? `${resultCount.toLocaleString()} results` : ''}
           </span>
+          {onToggleTheme && (
+            <button
+              className="theme-toggle"
+              onClick={onToggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            >
+              {theme === 'dark'
+                ? <Sun size={15} />
+                : <Moon size={15} />
+              }
+            </button>
+          )}
           <button
             className="hdr-burger"
             onClick={() => setMobileOpen((v) => !v)}

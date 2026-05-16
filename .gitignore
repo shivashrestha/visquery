@@ -79,3 +79,7 @@ visquery_ingestion
 ingestion/scripts/architecture_styles.json
 ingestion/scripts/scrap-images-wikimedia.py
 backend/scripts/purge_all_data.py
+ingestion/raw_data/
+design-v2
+ingestion/test
+.playwright-mcp/

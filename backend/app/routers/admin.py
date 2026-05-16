@@ -58,16 +58,17 @@ def test_vlm(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    """Synchronously run VLM captioning on an existing image."""
+    """Synchronously run VLM artifact extraction on an existing image."""
     image = db.query(Image).filter(Image.id == image_id).first()
     if image is None:
         raise HTTPException(status_code=404, detail="Image not found")
     try:
-        from app.workers.captioner import caption_image
-        result = caption_image(image.storage_path, settings)
-        return {"status": "ok", "caption": result, "storage_path": image.storage_path}
+        from app.workers.captioner import extract_image_artifacts
+        result = extract_image_artifacts(image.storage_path, settings)
+        return {"status": "ok", "artifacts": result, "storage_path": image.storage_path}
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "storage_path": image.storage_path}
+        logger.error("test_vlm_failed", image_id=str(image_id), error=str(exc))
+        return {"status": "error", "error": "Extraction failed — see server logs."}
 
 
 @router.post("/admin/retry-caption/{image_id}")
@@ -163,6 +164,6 @@ def get_job_status(job_id: str, settings: Settings = Depends(get_settings)) -> d
     }
 
     if job.is_failed:
-        result["error"] = str(job.exc_info)
+        result["failed"] = True
 
     return result

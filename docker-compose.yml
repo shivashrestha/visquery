@@ -1,4 +1,4 @@
-services:
+﻿services:
   fastapi:
     build:
       context: ./backend
@@ -10,6 +10,9 @@ services:
       HF_HUB_OFFLINE: "1"
       STORAGE_ROOT: /data
       FAISS_DATA_DIR: /data/vectors
+      TEXT_EMBEDDING_MODEL: /data/checkpoints/bge-small-en-v1.5
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "18001:8000"
     volumes:
@@ -44,6 +47,8 @@ services:
       HF_HUB_OFFLINE: "1"
       STORAGE_ROOT: /data
       FAISS_DATA_DIR: /data/vectors
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ${STORAGE_HOST_PATH:-./storage}:/data
       - ./storage/data/checkpoints:/data/checkpoints:ro
@@ -69,6 +74,8 @@ services:
       RAW_DATA_DIR: /raw_data
       STORAGE_ROOT: /data
       FAISS_DATA_DIR: /data/vectors
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ${STORAGE_HOST_PATH:-./storage}:/data
       - ./storage/data/checkpoints:/data/checkpoints:ro
