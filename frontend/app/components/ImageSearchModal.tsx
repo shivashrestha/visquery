@@ -112,7 +112,7 @@ export default function ImageSearchModal({
                   Drop an architectural image here
                 </p>
                 <p className="img-search-drop-sub">
-                  or click to browse — JPG, PNG, WebP up to 20 MB
+                  or click to browse - JPG, PNG, WebP up to 20 MB (auto-optimized)
                 </p>
                 <button
                   type="button"
@@ -126,7 +126,7 @@ export default function ImageSearchModal({
 
             <p className="img-search-privacy">
               <ShieldCheck size={11} />
-              Your image is processed in memory only — never stored on our servers.
+              Your image is processed in memory only and never stored on our servers.
             </p>
 
             {error && (

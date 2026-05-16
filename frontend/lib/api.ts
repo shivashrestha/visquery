@@ -1,8 +1,54 @@
 import type { SearchRequest, SearchResponse, Building, FeedbackRequest, UploadResponse, ArchitecturalArtifacts, EphemeralAnalysis } from './types';
 
+// Nginx default client_max_body_size is 1 MB. Compress before upload to stay safe.
+const UPLOAD_MAX_BYTES = 900 * 1024; // 900 KB target
+const UPLOAD_MAX_DIM = 1024;
+
+async function compressForUpload(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width: w, height: h } = img;
+      if (Math.max(w, h) > UPLOAD_MAX_DIM) {
+        const scale = UPLOAD_MAX_DIM / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, w, h);
+
+      let quality = 0.85;
+      const attempt = () => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { reject(new Error('Canvas toBlob failed')); return; }
+            if (blob.size <= UPLOAD_MAX_BYTES || quality <= 0.4) {
+              resolve(blob);
+            } else {
+              quality = Math.max(quality - 0.1, 0.4);
+              attempt();
+            }
+          },
+          'image/jpeg',
+          quality,
+        );
+      };
+      attempt();
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
+  });
+}
+
 export async function searchByImage(file: File): Promise<SearchResponse> {
+  const blob = await compressForUpload(file);
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', blob, 'query.jpg');
   const res = await fetch('/api/search-by-image', {
     method: 'POST',
     body: formData,
@@ -111,8 +157,9 @@ export async function getArtifacts(imageId: string): Promise<{ artifacts: Archit
 }
 
 export async function analyzeEphemeral(file: File): Promise<EphemeralAnalysis> {
+  const blob = await compressForUpload(file);
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', blob, 'image.jpg');
   const res = await fetch('/api/images/analyze-ephemeral', {
     method: 'POST',
     body: formData,
