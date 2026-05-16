@@ -92,6 +92,27 @@
         limits:
           memory: 1500M
 
+  embed-text:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "/scripts/generate_text_embeddings.py"]
+    environment:
+      HF_HOME: /opt/hf-cache
+      HF_HUB_OFFLINE: "1"
+      STORAGE_ROOT: /data
+      TEXT_EMBEDDING_MODEL: /data/checkpoints/bge-small-en-v1.5
+    volumes:
+      - ${STORAGE_HOST_PATH:-./storage}:/data
+      - ./storage/data/checkpoints:/data/checkpoints:ro
+      - ./ingestion/scripts:/scripts:ro
+    restart: "no"
+    profiles: ["embed-text"]
+    deploy:
+      resources:
+        limits:
+          memory: 1500M
+
   postgres:
     image: postgres:16-alpine
     environment:
