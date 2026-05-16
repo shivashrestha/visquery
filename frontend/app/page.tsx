@@ -28,13 +28,13 @@ function shortStyleTag(style: string): string {
 
 // ── Static plate showcase ──────────────────────────────
 const SAMPLE_PLATES = [
-  { img: '/etienne-chevalier-ZK75CjUSa8U-unsplash.jpg', name: 'Gothic', era: '1140–1500', region: 'Europe' },
-  { img: '/kamal-alkhatib-dfTooNLNu6M-unsplash.jpg', name: 'Baroque', era: '1600–1750', region: 'Europe' },
-  { img: '/hossein-nasr-8lBZWmYjymA-unsplash.jpg', name: 'Achaemenid', era: '550–330 BCE', region: 'Persia' },
-  { img: '/biel-morro-d0xjEv-WJQk-unsplash.jpg', name: 'Modernist', era: '1920s–present', region: 'Global' },
-  { img: '/jimmy-woo-_2aqusGbPO0-unsplash.jpg', name: 'Art Deco', era: '1920s–1940s', region: 'Americas' },
+  { img: '/etienne-chevalier-ZK75CjUSa8U-unsplash.jpg', name: 'Second Empire', era: '1852–1880s', region: 'France' },
+  { img: '/kamal-alkhatib-dfTooNLNu6M-unsplash.jpg', name: 'Ottoman', era: '15th–19th c.', region: 'Middle East' },
+  { img: '/hossein-nasr-8lBZWmYjymA-unsplash.jpg', name: 'Neoclassical', era: '18th–20th c.', region: 'Global' },
+  { img: '/biel-morro-d0xjEv-WJQk-unsplash.jpg', name: 'Gothic Revival', era: '1840–1960', region: 'Europe' },
+  { img: '/jimmy-woo-_2aqusGbPO0-unsplash.jpg', name: 'Mudéjar Revival', era: '1890s–1930s', region: 'Spain' },
   { img: '/reid-bailey-NAn5nn_HBcc-unsplash.jpg', name: 'Beaux-Arts', era: '1830–1930', region: 'France & U.S.' },
-  { img: '/teymur-mammadov-MX0BBSYGNZs-unsplash.jpg', name: 'Byzantine', era: '330–1453', region: 'E. Mediterranean' },
+  { img: '/teymur-mammadov-MX0BBSYGNZs-unsplash.jpg', name: 'Caucasian Vernacular', era: '19th–early 20th c.', region: 'Georgia' },
 ];
 
 const EPOCH_GROUPS = [
