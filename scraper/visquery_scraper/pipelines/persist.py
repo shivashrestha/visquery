@@ -21,6 +21,37 @@ from scrapy.exceptions import DropItem
 
 from visquery_scraper.items import ArchitectureImageItem
 
+_STORAGE_MAX_DIM = 1920
+_STORAGE_MAX_BYTES = 500 * 1024  # 500 KB
+
+try:
+    from PIL import Image as _PILImage
+    import io as _io
+
+    try:
+        _RESAMPLE = _PILImage.Resampling.LANCZOS
+    except AttributeError:
+        _RESAMPLE = _PILImage.LANCZOS  # type: ignore[attr-defined]
+
+    def _compress_for_storage(image_bytes: bytes) -> bytes:
+        pil = _PILImage.open(_io.BytesIO(image_bytes)).convert("RGB")
+        w, h = pil.size
+        if max(w, h) > _STORAGE_MAX_DIM:
+            scale = _STORAGE_MAX_DIM / max(w, h)
+            pil = pil.resize((int(w * scale), int(h * scale)), _RESAMPLE)
+        quality = 85
+        while True:
+            buf = _io.BytesIO()
+            pil.save(buf, "JPEG", optimize=True, quality=quality)
+            if buf.tell() <= _STORAGE_MAX_BYTES or quality <= 40:
+                buf.seek(0)
+                return buf.read()
+            quality -= 10
+
+except ImportError:
+    def _compress_for_storage(image_bytes: bytes) -> bytes:  # type: ignore[misc]
+        return image_bytes
+
 logger = logging.getLogger(__name__)
 
 
@@ -199,17 +230,21 @@ class PersistPipeline:
         sha256 = item.get("sha256") or "unknown"
         url = item.get("url", "")
         spider_name = item.get("spider_name", "unknown")
-        parsed_path = urllib.parse.urlparse(url).path
-        ext = os.path.splitext(parsed_path)[-1].lower()
-        if ext not in (".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".gif"):
-            ext = ".jpg"
+        ext = ".jpg"  # always JPEG after storage compression
         prefix = sha256[:2] if len(sha256) >= 2 else "xx"
         return f"{spider_name}/{prefix}/{sha256}{ext}"
 
     def _store_local(self, image_bytes: bytes, storage_path: str) -> str:
         dest = self._local_root / storage_path
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(image_bytes)
+        compressed = _compress_for_storage(image_bytes)
+        dest.write_bytes(compressed)
+        logger.debug(
+            "image_stored original_kb=%d stored_kb=%d path=%s",
+            len(image_bytes) // 1024,
+            len(compressed) // 1024,
+            dest,
+        )
         return str(dest)
 
     def _download_bytes(self, url: str, spider) -> Optional[bytes]:
