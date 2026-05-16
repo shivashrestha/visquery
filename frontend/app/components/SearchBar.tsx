@@ -152,13 +152,14 @@ export default function SearchBar({
             <motion.button
               type="submit"
               disabled={!hasContent || isActive}
+              className={large ? 'p-2 sm:px-[22px] sm:py-[11px]' : ''}
               style={{
                 fontSize: large ? '13px' : '10px',
                 fontWeight: '500',
                 letterSpacing: large ? '0.02em' : '0.10em',
                 textTransform: large ? 'none' : 'uppercase',
                 fontFamily: large ? 'var(--sans)' : 'var(--mono)',
-                padding: large ? '11px 22px' : '6px 12px',
+                padding: large ? undefined : '6px 12px',
                 borderRadius: '20px',
                 background: hasContent && !isActive ? 'var(--ink)' : 'var(--line)',
                 color: hasContent && !isActive ? '#FFFFFF' : 'var(--ink-muted)',
@@ -170,11 +171,13 @@ export default function SearchBar({
                 alignItems: 'center',
                 gap: '6px',
                 opacity: hasContent && !isActive ? 1 : 0.5,
+                whiteSpace: 'nowrap',
               }}
               whileHover={hasContent && !isActive ? { opacity: 0.85 } : {}}
               whileTap={hasContent && !isActive ? { scale: 0.98 } : {}}
             >
-              {large ? 'Search' : 'Go'}
+              <Search className="w-4 h-4 sm:hidden" />
+              <span className="hidden sm:inline">{large ? 'Search' : 'Search'}</span>
             </motion.button>
           </div>
         </div>
