@@ -36,6 +36,8 @@ function PinterestCard({ result, onClick, onFav, fav, index }: PinterestCardProp
             src={result.image_url}
             alt={metadata.architect ?? ''}
             loading="lazy"
+            decoding="async"
+            sizes="(max-width: 500px) 100vw, (max-width: 800px) 50vw, (max-width: 1200px) 33vw, 25vw"
             style={{ width: '100%', height: 'auto', display: 'block' }}
           />
         ) : (
@@ -160,17 +162,45 @@ export default function LibraryView({ onOpen, favs, onFav }: LibraryViewProps) {
     setSort(s);
   };
 
-  // Client-side filter application
+  // Client-side filter application — all string filters use contains matching to align with backend ILIKE
   const filtered = items.filter(item => {
     const m = item.metadata;
-    if (filters.typology.length > 0 && !filters.typology.some(t => m.typology?.includes(t))) return false;
-    if (filters.material.length > 0 && !filters.material.some(t => m.materials?.includes(t))) return false;
-    if (filters.structural_system.length > 0 && m.structural_system && !filters.structural_system.includes(m.structural_system)) return false;
-    if (filters.climate_zone.length > 0 && m.climate_zone && !filters.climate_zone.includes(m.climate_zone)) return false;
+
+    if (filters.style.length > 0) {
+      const styleVal = (
+        (item.artifacts_json?.style?.primary as string | undefined) ??
+        (item.image_metadata?.architecture_style_classified as string | undefined) ??
+        ''
+      ).toLowerCase();
+      if (!filters.style.some(s => styleVal.includes(s.toLowerCase()))) return false;
+    }
+
+    if (filters.typology.length > 0) {
+      const joined = (m.typology ?? []).join(',').toLowerCase();
+      if (!filters.typology.some(t => joined.includes(t.toLowerCase()))) return false;
+    }
+
+    if (filters.material.length > 0) {
+      const joined = (m.materials ?? []).join(',').toLowerCase();
+      if (!filters.material.some(t => joined.includes(t.toLowerCase()))) return false;
+    }
+
+    if (filters.structural_system.length > 0) {
+      const val = (m.structural_system ?? '').toLowerCase();
+      if (!filters.structural_system.some(s => val.includes(s.toLowerCase()))) return false;
+    }
+
+    if (filters.climate_zone.length > 0) {
+      const val = (m.climate_zone ?? '').toLowerCase();
+      if (!filters.climate_zone.some(z => val.includes(z.toLowerCase()))) return false;
+    }
+
     if (filters.location_country && m.location_country !== filters.location_country) return false;
+
     if (m.year_built) {
       if (m.year_built < filters.period[0] || m.year_built > filters.period[1]) return false;
     }
+
     return true;
   });
 

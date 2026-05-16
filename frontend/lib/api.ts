@@ -1,4 +1,4 @@
-import type { SearchRequest, SearchResponse, Building, FeedbackRequest, UploadResponse } from './types';
+import type { SearchRequest, SearchResponse, Building, FeedbackRequest, UploadResponse, ArchitecturalArtifacts, EphemeralAnalysis } from './types';
 
 export async function searchByImage(file: File): Promise<SearchResponse> {
   const formData = new FormData();
@@ -100,6 +100,41 @@ export async function listImages(
     throw new Error(`Library fetch failed (${res.status}): ${text}`);
   }
   return res.json() as Promise<LibraryResponse>;
+}
+
+export async function getArtifacts(imageId: string): Promise<{ artifacts: ArchitecturalArtifacts; generated: boolean }> {
+  const res = await fetch(`/api/images/${imageId}/artifacts`);
+  if (!res.ok) {
+    throw new Error(`Artifacts fetch failed (${res.status})`);
+  }
+  return res.json() as Promise<{ artifacts: ArchitecturalArtifacts; generated: boolean }>;
+}
+
+export async function analyzeEphemeral(file: File): Promise<EphemeralAnalysis> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch('/api/images/analyze-ephemeral', {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    throw new Error(`Ephemeral analysis failed (${res.status})`);
+  }
+  const data = (await res.json()) as { analysis: EphemeralAnalysis };
+  return data.analysis;
+}
+
+export async function chatEphemeral(artifacts: EphemeralAnalysis, message: string): Promise<string> {
+  const res = await fetch('/api/images/chat-ephemeral', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ artifacts, message }),
+  });
+  if (!res.ok) {
+    throw new Error(`Ephemeral chat failed (${res.status})`);
+  }
+  const data = (await res.json()) as { answer: string };
+  return data.answer;
 }
 
 export async function chatImage(imageId: string, message: string): Promise<string> {

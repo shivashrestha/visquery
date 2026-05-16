@@ -114,3 +114,20 @@ def get_style_store(version: str, data_dir: str) -> VectorStore:
     # Gram vector dimension depends on the VGG-16 layer selection.
     # Empirically this is 2048 for the 4-layer configuration in style.py.
     return _get_store("style", version, dim=2048, data_dir=data_dir)
+
+
+def get_text_store(data_dir: str) -> VectorStore:
+    """BGE-small text embedding index (384-dim).
+    Index lives at {data_dir}/text/index.faiss + ids.json,
+    written by ingestion/scripts/generate_text_embeddings.py.
+    """
+    key = "text_bge_small"
+    with _lock:
+        if key not in _instances:
+            base = Path(data_dir) / "text"
+            _instances[key] = VectorStore(
+                index_path=base / "index.faiss",
+                id_map_path=base / "ids.json",
+                dim=384,
+            )
+    return _instances[key]

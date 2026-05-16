@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:18001';
 
-export async function POST(req: NextRequest) {
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
   try {
-    const formData = await req.formData();
-    const res = await fetch(`${BACKEND_URL}/api/search/by-image?score_threshold=0.5`, {
-      method: 'POST',
-      body: formData,
-    });
+    const res = await fetch(`${BACKEND_URL}/api/images/${id}/artifacts`);
     const raw = await res.text();
     let data: unknown = null;
     try {
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json(data);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Image search proxy error';
+    const message = err instanceof Error ? err.message : 'Artifacts proxy error';
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

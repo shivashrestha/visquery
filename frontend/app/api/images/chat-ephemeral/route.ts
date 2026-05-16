@@ -4,10 +4,11 @@ const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:18001';
 
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const res = await fetch(`${BACKEND_URL}/api/search/by-image?score_threshold=0.5`, {
+    const body = await req.json();
+    const res = await fetch(`${BACKEND_URL}/api/images/chat-ephemeral`, {
       method: 'POST',
-      body: formData,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
     const raw = await res.text();
     let data: unknown = null;
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json(data);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Image search proxy error';
+    const message = err instanceof Error ? err.message : 'Chat proxy error';
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

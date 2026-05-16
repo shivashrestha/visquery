@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     rag_llm_model: str = ""      # text LLM for router/rewriter/synthesizer
     ollama_api_key: str = ""
 
+    # Local Ollama — set LOCAL_MODE=true to bypass cloud endpoint
+    local_mode: bool = False
+    local_model_name: str = ""          # e.g. gemma4:e4b
+    local_ollama_base_url: str = "http://host.docker.internal:11434"
+
     # Storage paths — defaults match Docker volume mount at /data
     faiss_data_dir: str = "/data/vectors"
     storage_root: str = "/data"
@@ -53,6 +58,12 @@ class Settings(BaseSettings):
 
     # CORS — comma-separated list of allowed origins (e.g. https://visquery.com,https://www.visquery.com)
     allowed_origins: str = "*"
+
+    # Admin API key — required to access /api/admin/* endpoints
+    admin_secret: str = ""
+
+    # Resend email service
+    resend_api: str = ""
 
     # Logging
     log_level: str = "INFO"

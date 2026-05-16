@@ -5,7 +5,7 @@ const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:18001';
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const res = await fetch(`${BACKEND_URL}/api/search/by-image?score_threshold=0.5`, {
+    const res = await fetch(`${BACKEND_URL}/api/images/analyze-ephemeral`, {
       method: 'POST',
       body: formData,
     });
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json(data);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Image search proxy error';
+    const message = err instanceof Error ? err.message : 'Analyze proxy error';
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

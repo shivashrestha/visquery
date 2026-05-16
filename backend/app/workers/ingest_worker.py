@@ -1,10 +1,9 @@
 """RQ ingest worker.
 
 Receives image + metadata from the scraper pipeline and runs:
-  1. Embedder — CLIP (computed once, reused for style classification + FAISS)
-  2. Captioner — VLM generates {title, description, raw_text}
-  3. Metadata extractor — structured building fields
-  4. Index update — adds vectors to FAISS
+  1. Embedder  — CLIP (computed once, reused for style enrichment + FAISS)
+  2. Artifacts — VLM extracts title + full artifact JSON directly from the image
+  3. Index     — adds vectors to FAISS
 """
 from __future__ import annotations
 
@@ -20,10 +19,6 @@ logger = structlog.get_logger()
 
 
 def _resolve_storage_path(storage_path: str, settings) -> str:
-    """Resolve a stored path against the current storage_root.
-
-    Handles cases where storage was remounted (e.g., /app/storage → /data).
-    """
     p = Path(storage_path)
     if p.exists():
         return storage_path
@@ -48,20 +43,10 @@ def _write_metadata_json(settings, image_id: str, meta: dict) -> None:
         logger.warning("metadata_json_write_failed", image_id=image_id, error=str(exc))
 
 
-def _build_tags(caption_data: dict, building_meta: dict) -> list[str]:
-    classified = caption_data.get("architecture_style_classified") or ""
-    style_top = caption_data.get("architecture_style_top") or []
-    style_tags = [s for s, _ in style_top[:3]] if style_top else ([classified] if classified else [])
-    material_tags = building_meta.get("materials") or []
-    typology_tags = building_meta.get("typology") or []
-    return list(dict.fromkeys(style_tags + material_tags + typology_tags))
-
-
 def complete_image_metadata(image_id: str) -> dict[str, Any]:
-    """Background job: CLIP embed (if needed) + VLM caption + structured metadata extraction."""
+    """Background job: CLIP embed (if needed) + VLM artifact extraction."""
     from app.config import get_settings
-    from app.workers.captioner import caption_image
-    from app.workers.metadata_extractor import extract_building_metadata
+    from app.workers.captioner import extract_image_artifacts
 
     import sqlalchemy as sa
     from sqlalchemy.orm import sessionmaker
@@ -84,7 +69,8 @@ def complete_image_metadata(image_id: str) -> dict[str, Any]:
             log.info("storage_path_remapped", old=row.storage_path, new=resolved_path)
             row.storage_path = resolved_path
 
-        # CLIP embed + FAISS index (for images ingested via scraper direct-insert path)
+        # CLIP embed + FAISS index
+        vec = None
         if row.ingest_status == "processing":
             try:
                 import numpy as np
@@ -93,60 +79,57 @@ def complete_image_metadata(image_id: str) -> dict[str, Any]:
                 vec = embed_image_from_path(resolved_path)
                 clip_store = get_clip_store(settings.embedding_version, settings.faiss_data_dir)
                 clip_store.add(vec[np.newaxis, :], [image_id])
-                log.info("clip_indexed", image_id=image_id)
+                log.info("clip_indexed")
             except Exception as exc:
                 log.warning("clip_index_failed", error=str(exc))
 
-        log.info("captioning_start", storage_path=row.storage_path)
+        # VLM artifact extraction (single pass)
+        log.info("artifact_extraction_start")
+        artifacts: dict = {}
         try:
-            caption_data = caption_image(row.storage_path, settings)
-            log.info("captioning_done", title=caption_data.get("title", ""))
-        except Exception as exc:
-            log.warning("captioning_failed", error=str(exc))
-            caption_data = {}
-
-        building_meta: dict = {}
-        try:
-            source_text = (row.metadata_json or {}).get("text_excerpt", "") if row.metadata_json else ""
-            building_meta = extract_building_metadata(
-                text_excerpt=source_text,
-                caption_json=caption_data,
-                wikidata={},
-                settings=settings,
+            artifacts = extract_image_artifacts(
+                resolved_path, settings, image_vec=vec, enrich_style=True
             )
-            log.info("metadata_extracted", name=building_meta.get("name"))
+            log.info("artifact_extraction_done", style=artifacts.get("style", {}).get("primary"))
         except Exception as exc:
-            log.warning("metadata_extraction_failed", error=str(exc))
+            log.warning("artifact_extraction_failed", error=str(exc))
 
-        full_meta = {**caption_data, **building_meta}
+        title = artifacts.pop("title", "") if artifacts else ""
+        method = artifacts.pop("method", "") if artifacts else ""
+        description = artifacts.get("description", "")
+        building_type = artifacts.get("building_type", "")
+        # architecture_style_classified kept inside artifacts for style filter compat
+        style_classified = artifacts.get("architecture_style_classified", "") or (
+            artifacts.get("style", {}).get("primary", "") if artifacts else ""
+        )
 
-        # Core caption fields
-        row.caption        = caption_data.get("title", "")
-        row.caption_method = caption_data.get("method", "")
-        row.tags           = _build_tags(caption_data, building_meta)
-        row.metadata_json  = full_meta
+        row.caption        = title
+        row.caption_method = method
+        row.tags           = [style_classified] if style_classified else []
+        row.artifacts_json = artifacts if artifacts else None
+        row.metadata_json  = {
+            "title": title,
+            "description": description,
+            "building_type": building_type,
+            "architecture_style_classified": style_classified,
+        }
         row.metadata_ready = True
         row.ingest_status  = "ready"
 
-        # Structured metadata columns
-        row.name             = building_meta.get("name") or caption_data.get("title")
-        row.architect        = building_meta.get("architect")
-        row.year_built       = building_meta.get("year_built")
-        row.location_country = building_meta.get("location_country")
-        row.location_city    = building_meta.get("location_city")
-        row.typology         = building_meta.get("typology") or []
-        row.materials        = building_meta.get("materials") or []
-        row.structural_system= building_meta.get("structural_system")
-        row.climate_zone     = building_meta.get("climate_zone")
-        row.description      = building_meta.get("description")
+        row.name      = title or row.name
+        row.materials = artifacts.get("materials") or []
 
         _write_metadata_json(settings, image_id, {
             "filename": Path(row.storage_path).name,
-            **full_meta,
+            "title": title,
+            "description": description,
+            "building_type": building_type,
+            "architecture_style_classified": style_classified,
+            "artifacts": artifacts,
         })
 
         db.commit()
-        log.info("pipeline_complete", image_id=image_id, title=row.caption)
+        log.info("pipeline_complete", image_id=image_id, title=title)
 
     return {"status": "ok", "image_id": image_id}
 
@@ -166,7 +149,7 @@ def ingest_image(
     from app.config import get_settings
     from app.services.embedder import embed_image_from_path
     from app.services.vector_store import get_clip_store
-    from app.workers.captioner import caption_image
+    from app.workers.captioner import extract_image_artifacts
 
     import numpy as np
     import sqlalchemy as sa
@@ -200,16 +183,21 @@ def ingest_image(
             log.error("ingest_embedding_failed", error=str(exc))
             raise
 
-        log.info("ingest_captioning")
+        log.info("ingest_artifact_extraction")
+        artifacts: dict = {}
         try:
-            caption_data = caption_image(storage_path, settings, image_vec=vec)
+            artifacts = extract_image_artifacts(storage_path, settings, image_vec=vec, enrich_style=True)
         except Exception as exc:
-            log.warning("ingest_caption_failed", error=str(exc))
-            caption_data = {}
+            log.warning("ingest_artifact_extraction_failed", error=str(exc))
 
-        title = caption_data.get("title", "")
-        classified = caption_data.get("architecture_style_classified") or ""
-        tags = [classified] if classified else []
+        title = artifacts.pop("title", "") if artifacts else ""
+        method = artifacts.pop("method", "") if artifacts else ""
+        description = artifacts.get("description", "")
+        building_type = artifacts.get("building_type", "")
+        style_classified = artifacts.get("architecture_style_classified", "") or (
+            artifacts.get("style", {}).get("primary", "") if artifacts else ""
+        )
+        tags = [style_classified] if style_classified else []
 
         width, height = None, None
         try:
@@ -227,7 +215,7 @@ def ingest_image(
             width=width,
             height=height,
             caption=title,
-            caption_method=caption_data.get("method", ""),
+            caption_method=method,
             photographer=photographer,
             license=source_license,
             license_url=license_url,
@@ -235,8 +223,16 @@ def ingest_image(
             source_title=source_title,
             source_spider=spider_name,
             embedding_version=settings.embedding_version,
-            metadata_json={**caption_data, "text_excerpt": raw_text_excerpt},
+            metadata_json={
+                "title": title,
+                "description": description,
+                "building_type": building_type,
+                "architecture_style_classified": style_classified,
+            },
+            artifacts_json=artifacts if artifacts else None,
             tags=tags,
+            name=title or None,
+            materials=artifacts.get("materials") or [],
         )
         db.add(image)
         db.flush()
@@ -251,7 +247,11 @@ def ingest_image(
 
         _write_metadata_json(settings, str(image_id), {
             "filename": path.name,
-            **caption_data,
+            "title": title,
+            "description": description,
+            "building_type": building_type,
+            "architecture_style_classified": style_classified,
+            "artifacts": artifacts,
         })
 
         db.commit()

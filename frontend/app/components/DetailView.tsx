@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CachedImage from './CachedImage';
-import { ArrowLeft, Heart, ExternalLink, MessageSquare, Info, Sparkles } from 'lucide-react';
+import { ArrowLeft, Heart, ExternalLink, MessageSquare, Info, Sparkles, Bot, Layers } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
 import BuildingCard from './BuildingCard';
-import { chatImage } from '@/lib/api';
+import ArtifactsModal from './ArtifactsModal';
+import { chatImage, chatEphemeral } from '@/lib/api';
 
 interface DetailViewProps {
   item: SearchResultItem;
@@ -107,6 +108,7 @@ export default function DetailView({
 }: DetailViewProps) {
   const [activeImg, setActiveImg] = useState(0);
   const [mobileTab, setMobileTab] = useState<'detail' | 'chat'>('detail');
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
 
   // ── Resizable RAG panel ──────────────────────────────────────
   const MIN_RAG = 220;
@@ -158,7 +160,7 @@ export default function DetailView({
     };
   }, []);
 
-  // Resolved display values — metadata fields first, fall back to image_metadata (VLM)
+  // Display values — item.metadata > image_metadata fallback
   const displayDescription =
     item.metadata.description ||
     item.explanation ||
@@ -205,14 +207,16 @@ export default function DetailView({
     setDraft('');
     setThinking(true);
     try {
-      const answer = await chatImage(item.image_id, q);
+      const answer = item.ephemeral_artifacts
+        ? await chatEphemeral(item.ephemeral_artifacts, q)
+        : await chatImage(item.image_id, q);
       setMsgs((m) => [...m, { who: 'ai', text: answer }]);
     } catch {
       setMsgs((m) => [...m, { who: 'ai', text: 'Unable to answer right now.' }]);
     } finally {
       setThinking(false);
     }
-  }, [item.image_id]);
+  }, [item.image_id, item.ephemeral_artifacts]);
 
   const locationStr = [item.metadata.location_city, item.metadata.location_country]
     .filter(Boolean).join(', ');
@@ -282,6 +286,14 @@ export default function DetailView({
               <Heart size={12} fill={fav ? 'currentColor' : 'none'} />
               {fav ? 'Saved' : 'Save'}
             </motion.button>
+            <motion.button
+              className="btn-ghost btn-artifacts"
+              onClick={() => setArtifactsOpen(true)}
+              whileTap={{ scale: 0.92 }}
+              title="View extracted architectural artifacts"
+            >
+              <Layers size={12} /> Artifacts
+            </motion.button>
             {item.source.url && (
               <a
                 href={item.source.url}
@@ -297,73 +309,90 @@ export default function DetailView({
 
         {/* Detail grid */}
         <div className="detail-grid">
-          <div className="detail-ai-row">
-            <div
-              className="ai-badge"
-              data-tooltip="AI-generated · descriptions and metadata may not be fully accurate"
-            >
-              <Sparkles size={11} />
-            </div>
-          </div>
 
           <div className="detail-section">
-            <h4>Description</h4>
+            <h4>
+              Description
+              <span
+                className="ai-inline-badge"
+                title="AI-generated · descriptions and metadata may not be fully accurate"
+              >
+                <Bot size={8} />
+                AI
+              </span>
+            </h4>
             {displayDescription ? (
               <p>{displayDescription}</p>
             ) : (
-              <p style={{ color: 'var(--ink-faint)', fontStyle: 'italic' }}>
+              <p style={{ color: 'var(--ink-faint)', fontStyle: 'italic', fontSize: '0.85rem' }}>
                 No description available.
               </p>
             )}
+            <button
+              className="btn-artifacts-inline"
+              onClick={() => setArtifactsOpen(true)}
+            >
+              <Layers size={11} /> View all artifacts
+            </button>
           </div>
 
-          <div className="detail-section">
-            <h4>Metadata</h4>
-            <dl className="detail-meta-list">
-              {item.metadata.typology && item.metadata.typology.length > 0 && (
-                <>
-                  <dt>Typology</dt>
-                  <dd>{item.metadata.typology.map((t) => t.replace(/_/g, ' ')).join(', ')}</dd>
-                </>
-              )}
-              {materials.length > 0 && (
-                <>
-                  <dt>Material</dt>
-                  <dd>{materials.join(', ')}</dd>
-                </>
-              )}
-              {item.metadata.structural_system && (
-                <>
-                  <dt>Structure</dt>
-                  <dd>{item.metadata.structural_system.replace(/_/g, ' ')}</dd>
-                </>
-              )}
-              {item.metadata.climate_zone && (
-                <>
-                  <dt>Climate</dt>
-                  <dd>{item.metadata.climate_zone.replace(/_/g, ' ')}</dd>
-                </>
-              )}
-              {locationStr && (
-                <>
-                  <dt>Location</dt>
-                  <dd>{locationStr}</dd>
-                </>
-              )}
-              {item.metadata.year_built && (
-                <>
-                  <dt>Year</dt>
-                  <dd>{item.metadata.year_built}</dd>
-                </>
-              )}
-              {styleClassified && (
-                <>
-                  <dt>Style</dt>
-                  <dd>{styleClassified}</dd>
-                </>
-              )}
-            </dl>
-          </div>
+          {(
+            (item.metadata.typology?.length ?? 0) > 0 ||
+            materials.length > 0 ||
+            item.metadata.structural_system ||
+            item.metadata.climate_zone ||
+            locationStr ||
+            item.metadata.year_built ||
+            styleClassified
+          ) && (
+            <div className="detail-section">
+              <h4>Metadata</h4>
+              <dl className="detail-meta-list">
+                {item.metadata.typology && item.metadata.typology.length > 0 && (
+                  <>
+                    <dt>Typology</dt>
+                    <dd>{item.metadata.typology.map((t) => t.replace(/_/g, ' ')).join(', ')}</dd>
+                  </>
+                )}
+                {materials.length > 0 && (
+                  <>
+                    <dt>Material</dt>
+                    <dd>{materials.join(', ')}</dd>
+                  </>
+                )}
+                {item.metadata.structural_system && (
+                  <>
+                    <dt>Structure</dt>
+                    <dd>{item.metadata.structural_system.replace(/_/g, ' ')}</dd>
+                  </>
+                )}
+                {item.metadata.climate_zone && (
+                  <>
+                    <dt>Climate</dt>
+                    <dd>{item.metadata.climate_zone.replace(/_/g, ' ')}</dd>
+                  </>
+                )}
+                {locationStr && (
+                  <>
+                    <dt>Location</dt>
+                    <dd>{locationStr}</dd>
+                  </>
+                )}
+                {item.metadata.year_built && (
+                  <>
+                    <dt>Year</dt>
+                    <dd>{item.metadata.year_built}</dd>
+                  </>
+                )}
+                {styleClassified && (
+                  <>
+                    <dt>Style</dt>
+                    <dd>{styleClassified}</dd>
+                  </>
+                )}
+              </dl>
+            </div>
+          )}
 
           {styleTop.length > 0 && (
             <div className="detail-section">
@@ -390,21 +419,15 @@ export default function DetailView({
             </div>
           )}
 
-          <div className="detail-section">
-            <h4>Description source</h4>
-            <dl className="detail-meta-list">
-              <dt>Generated by</dt>
-              <dd style={{ fontFamily: 'var(--mono)', fontSize: '10px' }}>
-                Claude (Anthropic) · AI Vision Model
-              </dd>
-              {item.source.photographer && (
-                <>
-                  <dt>Photography</dt>
-                  <dd>{item.source.photographer}</dd>
-                </>
-              )}
-            </dl>
-          </div>
+          {item.source.photographer && (
+            <div className="detail-section">
+              <h4>Photography</h4>
+              <dl className="detail-meta-list">
+                <dt>Credit</dt>
+                <dd>{item.source.photographer}</dd>
+              </dl>
+            </div>
+          )}
 
           {(item.tags ?? []).length > 0 && (
             <div className="detail-section">
@@ -546,6 +569,15 @@ export default function DetailView({
           Ask AI
         </button>
       </div>
+
+      <ArtifactsModal
+        open={artifactsOpen}
+        imageId={item.image_id}
+        buildingName={displayTitle || undefined}
+        prefetched={(item.ephemeral_artifacts as import('@/lib/types').ArchitecturalArtifacts | undefined) ?? item.artifacts_json ?? null}
+        skipFetch={item.ephemeral_artifacts !== undefined}
+        onClose={() => setArtifactsOpen(false)}
+      />
     </div>
   );
 }

@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import uuid
 from pathlib import Path
 
 import redis
+import structlog
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -19,6 +21,8 @@ from app.models.source import Image, ImageRead
 from app.services.embedder import embed_image
 from app.services.vector_store import get_clip_store
 from app.workers.ingest_worker import complete_image_metadata
+
+logger = structlog.get_logger()
 
 router = APIRouter(tags=["images"])
 
@@ -34,6 +38,11 @@ class UploadResponse(BaseModel):
 class ImageChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1500)
     history: list[dict] = Field(default_factory=list)
+
+
+class EphemeralChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1500)
+    artifacts: dict = Field(default_factory=dict)
 
 
 @router.post("/images/upload", response_model=UploadResponse)
@@ -154,6 +163,7 @@ async def list_images(
             },
             "image_url": f"/images/{img.id}/raw",
             "image_metadata": img.metadata_json or {},
+            "artifacts_json": img.artifacts_json or None,
             "tags": img.tags or [],
         })
 
@@ -210,49 +220,64 @@ async def image_chat(
     if image is None:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    meta = image.metadata_json or {}
+    artifacts = image.artifacts_json or {}
     fields: list[str] = []
+
+    # Build RAG context from artifacts
+    style = artifacts.get("style", {})
+    if style.get("primary"):
+        label = style["primary"].replace("_", " ")
+        sec = style.get("secondary") or []
+        fields.append(f"Style: {label}" + (f" (also: {', '.join(s.replace('_', ' ') for s in sec)})" if sec else ""))
+
+    elements = artifacts.get("architectural_elements", {})
+    for group, vals in elements.items():
+        if vals:
+            fields.append(f"{group.replace('_', ' ').title()} elements: {', '.join(v.replace('_', ' ') for v in vals)}")
+
+    if artifacts.get("materials"):
+        fields.append(f"Materials: {', '.join(m.replace('_', ' ') for m in artifacts['materials'])}")
+
+    if artifacts.get("spatial_features"):
+        fields.append(f"Spatial features: {', '.join(f.replace('_', ' ') for f in artifacts['spatial_features'])}")
+
+    if artifacts.get("relationships"):
+        rels = "; ".join(
+            f"{r['source'].replace('_', ' ')} {r['relation'].replace('_', ' ')} {r['target'].replace('_', ' ')}"
+            for r in artifacts["relationships"]
+        )
+        fields.append(f"Structural relationships: {rels}")
+
+    # Supplement with any known identity fields
     for label, val in [
-        ("Name", meta.get("name") or image.name),
-        ("Architect", meta.get("architect") or image.architect),
-        ("Year", meta.get("year_built") or image.year_built),
+        ("Name", image.name or image.caption),
         ("Location", ", ".join(filter(None, [image.location_city, image.location_country]))),
-        ("Typology", ", ".join(image.typology or [])),
-        ("Materials", ", ".join(image.materials or [])),
-        ("Structure", image.structural_system),
-        ("Climate", image.climate_zone),
-        ("Style", meta.get("architecture_style_classified")),
-        ("Description", image.description or image.caption),
-        ("Tags", ", ".join(image.tags or [])),
+        ("Year built", image.year_built),
+        ("Architect", image.architect),
     ]:
         if val:
             fields.append(f"{label}: {val}")
 
-    known = "\n".join(fields) if fields else "No details recorded."
+    known = "\n".join(fields) if fields else "No artifacts recorded for this image."
 
     system = (
-        "You are a knowledgeable architectural assistant. Answer questions about a building naturally and directly, "
-        "as a person who knows architecture well — not as a system reading from a file.\n"
+        "You are a knowledgeable architectural assistant with access to extracted artifact data. "
+        "Answer questions about the building directly and naturally, drawing on the artifact context provided.\n"
         "\n"
         "Tone and format:\n"
         "- Plain conversational prose. 2-3 sentences. No lists, no headers, no bold.\n"
-        "- Speak directly: 'The building uses...' or 'It sits in...' — never 'based on', 'according to', 'the metadata shows', 'as described', 'derived from', or any phrase that reveals you are reading a data source.\n"
-        "- When a detail is missing, infer from what you know (materials suggest structure, location suggests climate, typology suggests program). "
-        "If there is genuinely nothing to work with, say only: 'No info found for that.'\n"
+        "- Speak as an expert: 'The structure relies on...' or 'The facade exhibits...' — "
+        "never say 'based on the data', 'according to the artifacts', or reveal you are reading a source.\n"
+        "- Infer from artifacts when a direct answer is missing (materials imply structure, style implies era, etc.). "
+        "If nothing can be inferred, reply only: 'No info found for that.'\n"
         "\n"
-        "Examples of good answers:\n"
-        "Q: What's the structural strategy?\n"
-        "A (no structural info, but materials known): The exposed concrete and long-span proportions suggest a frame or flat-slab system, though the exact structural scheme isn't documented here.\n"
-        "A (nothing to infer): No info found for that.\n"
-        "\n"
-        "Q: What style is this?\n"
-        "A: It reads as late modernism — minimal detailing, flush surfaces, and a restrained material palette with no ornamental gestures.\n"
-        "\n"
-        "Q: How does it respond to climate?\n"
-        "A (no climate data, location known): Situated in Japan, the building likely contends with humid summers and mild winters — the deep overhangs and natural ventilation evident in the section support that reading.\n"
-        "A (nothing to infer): No info found for that."
+        "Example:\n"
+        "Q: What structural system is used?\n"
+        "A (structural elements known): The ribbed vaults and flying buttresses distribute thrust outward, "
+        "enabling the thin walls and tall clerestory windows characteristic of Gothic construction.\n"
+        "A (no structural data): No info found for that."
     )
-    user = f"Building facts:\n{known}\n\nQuestion: {request.message}"
+    user = f"Architectural artifacts:\n{known}\n\nQuestion: {request.message}"
 
     from app.services.llm import complete
     answer = complete(system=system, user=user, temperature=0.3, max_tokens=200)
@@ -262,11 +287,11 @@ async def image_chat(
 @router.post("/search/by-image")
 async def search_by_image(
     file: UploadFile = File(...),
-    score_threshold: float = 0.10,
+    score_threshold: float = 0.70,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    """Visual similarity search — embed uploaded image with CLIP, return similar images."""
+    """Visual similarity search — optimize + CLIP embed + FAISS, returns similar images (≥85% cosine)."""
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files are supported")
 
@@ -275,19 +300,21 @@ async def search_by_image(
         raise HTTPException(status_code=400, detail="Empty file")
 
     import asyncio
+    import io as _io
+    import tempfile
     import time
-    from PIL import Image as PILImage
     from app.services import embedder as emb_service
+    from app.services.image_optimizer import optimize_for_embedding
     from app.services.retrieval import _fetch_result_metadata, _image_to_metadata
 
     loop = asyncio.get_running_loop()
     t0 = time.perf_counter()
 
-    with PILImage.open(io.BytesIO(content)) as pil:
-        rgb = pil.convert("RGB")
-
+    # 1. Optimize in-memory + CLIP embed
+    rgb = await loop.run_in_executor(None, optimize_for_embedding, content)
     vec = await loop.run_in_executor(None, emb_service.embed_image, rgb)
 
+    # 2. CLIP similarity search
     clip_store = get_clip_store(settings.embedding_version, settings.faiss_data_dir)
     ids, scores = clip_store.search(vec, settings.top_k_retrieve)
 
@@ -315,11 +342,161 @@ async def search_by_image(
             },
             "image_url": f"/images/{iid}/raw",
             "image_metadata": img.metadata_json or {},
+            "artifacts_json": img.artifacts_json or None,
             "tags": img.tags or [],
         })
 
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
     return {"results": results, "latency_ms": {"total": elapsed_ms}}
+
+
+@router.get("/images/{image_id}/artifacts")
+async def get_image_artifacts(
+    image_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Return stored artifacts or generate them on-demand."""
+    image = db.query(Image).filter(Image.id == image_id).first()
+    if image is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    if image.artifacts_json:
+        title = image.caption or (image.metadata_json or {}).get("title", "")
+        artifacts_with_title = {"title": title, **image.artifacts_json}
+        return {"image_id": str(image_id), "artifacts": artifacts_with_title, "generated": False}
+
+    # Generate on-demand using existing metadata context
+    try:
+        from app.workers.artifact_extractor import extract_artifacts_from_context
+        caption_data = image.metadata_json or {}
+        building_meta = {
+            "typology": image.typology or [],
+            "materials": image.materials or [],
+            "structural_system": image.structural_system,
+            "description": image.description,
+        }
+        artifacts = extract_artifacts_from_context(caption_data, building_meta, settings)
+        if artifacts:
+            image.artifacts_json = artifacts
+            db.commit()
+        return {"image_id": str(image_id), "artifacts": artifacts, "generated": True}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Artifact extraction failed: {exc}")
+
+
+@router.post("/images/analyze-ephemeral")
+async def analyze_ephemeral_image(
+    file: UploadFile = File(...),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """VLM artifact extraction for uploaded images — no storage, no DB write."""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are supported")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    import asyncio
+    import time
+    from app.services import embedder as emb_service
+    from app.services.image_optimizer import optimize_for_embedding
+    from app.workers.captioner import extract_image_artifacts_from_bytes
+
+    loop = asyncio.get_running_loop()
+    t0 = time.perf_counter()
+
+    rgb = await loop.run_in_executor(None, optimize_for_embedding, content)
+    vec = await loop.run_in_executor(None, emb_service.embed_image, rgb)
+
+    _content = content
+    _settings = settings
+    _vec = vec
+    analysis = await loop.run_in_executor(
+        None,
+        lambda: extract_image_artifacts_from_bytes(_content, _settings, _vec, enrich_style=True),
+    )
+
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+    return {"analysis": analysis, "latency_ms": elapsed_ms}
+
+
+@router.post("/images/chat-ephemeral")
+async def chat_ephemeral_image(request: EphemeralChatRequest) -> dict:
+    """Stateless architectural chat — uses provided artifacts, no DB lookup."""
+    artifacts = request.artifacts
+    fields: list[str] = []
+
+    style = artifacts.get("style", {})
+    if isinstance(style, dict) and style.get("primary"):
+        label = style["primary"].replace("_", " ")
+        sec = style.get("secondary") or []
+        fields.append(
+            f"Style: {label}"
+            + (f" (also: {', '.join(s.replace('_', ' ') for s in sec if isinstance(s, str))})" if sec else "")
+        )
+
+    elements = artifacts.get("architectural_elements", {})
+    if isinstance(elements, dict):
+        for group, vals in elements.items():
+            if vals and isinstance(vals, list):
+                fields.append(
+                    f"{group.replace('_', ' ').title()} elements: "
+                    f"{', '.join(v.replace('_', ' ') for v in vals if isinstance(v, str))}"
+                )
+
+    mats = artifacts.get("materials")
+    if mats and isinstance(mats, list):
+        fields.append(f"Materials: {', '.join(m.replace('_', ' ') for m in mats if isinstance(m, str))}")
+
+    sf = artifacts.get("spatial_features")
+    if sf:
+        flat: list[str] = []
+        if isinstance(sf, dict):
+            for vals in sf.values():
+                if isinstance(vals, list):
+                    flat.extend(v for v in vals if isinstance(v, str))
+        elif isinstance(sf, list):
+            flat = [v for v in sf if isinstance(v, str)]
+        if flat:
+            fields.append(f"Spatial features: {', '.join(f.replace('_', ' ') for f in flat)}")
+
+    rels = artifacts.get("relationships")
+    if rels and isinstance(rels, list):
+        rel_strs = [
+            f"{r['source'].replace('_', ' ')} {r['relation'].replace('_', ' ')} {r['target'].replace('_', ' ')}"
+            for r in rels
+            if isinstance(r, dict) and all(k in r for k in ("source", "relation", "target"))
+        ]
+        if rel_strs:
+            fields.append(f"Structural relationships: {'; '.join(rel_strs)}")
+
+    title = artifacts.get("title", "")
+    if title:
+        fields.append(f"Name: {title}")
+    description = artifacts.get("description", "")
+    if description:
+        fields.append(f"Description: {description}")
+
+    known = "\n".join(fields) if fields else "No artifacts recorded for this image."
+
+    system = (
+        "You are a knowledgeable architectural assistant with access to extracted artifact data. "
+        "Answer questions about the building directly and naturally, drawing on the artifact context provided.\n"
+        "\n"
+        "Tone and format:\n"
+        "- Plain conversational prose. 2-3 sentences. No lists, no headers, no bold.\n"
+        "- Speak as an expert: 'The structure relies on...' or 'The facade exhibits...' — "
+        "never say 'based on the data', 'according to the artifacts', or reveal you are reading a source.\n"
+        "- Infer from artifacts when a direct answer is missing (materials imply structure, style implies era, etc.). "
+        "If nothing can be inferred, reply only: 'No info found for that.'\n"
+    )
+    user = f"Architectural artifacts:\n{known}\n\nQuestion: {request.message}"
+
+    from app.services.llm import complete
+    answer = complete(system=system, user=user, temperature=0.3, max_tokens=200)
+    return {"answer": answer}
 
 
 def _guess_media_type(suffix: str) -> str:

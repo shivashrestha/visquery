@@ -100,6 +100,10 @@ export default function BuildingCard({
           </div>
         )}
 
+        <div className="card-corners" aria-hidden="true">
+          <span /><span /><span /><span />
+        </div>
+
         {onFav && (
           <motion.button
             className={`card-fav${fav ? ' on' : ''}`}
@@ -116,16 +120,23 @@ export default function BuildingCard({
         )}
       </div>
 
-      <div className="card-meta-1">
-        {(source.title || metadata.architect) && (
-          <h3 className="card-title">{source.title || metadata.architect}</h3>
-        )}
-        {metadata.year_built && (
-          <span className="card-year">{metadata.year_built}</span>
-        )}
-      </div>
+      {(source.title || metadata.architect || metadata.year_built) && (
+        <div className="card-meta-1">
+          {(source.title || metadata.architect) && (
+            <h3 className="card-title">{source.title || metadata.architect}</h3>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+            {metadata.year_built && (
+              <span className="card-year">{metadata.year_built}</span>
+            )}
+            {index !== undefined && (
+              <span className="card-plate-num">No.{String(index + 1).padStart(3, '0')}</span>
+            )}
+          </div>
+        </div>
+      )}
 
-      {(metadata.architect || metadata.location_country) && (
+      {(metadata.architect || metadata.location_city || metadata.location_country) && (
         <p className="card-sub">
           {[
             metadata.architect,

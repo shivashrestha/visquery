@@ -47,6 +47,7 @@ class Image(Base):
     # Raw VLM output + indexing state
     embedding_version= Column(Text, nullable=False, default="base")
     metadata_json    = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    artifacts_json   = Column(JSONB, nullable=True)
     tags             = Column(ARRAY(Text), nullable=False, server_default=text("'{}'::text[]"))
     ingest_status    = Column(Text, nullable=False, server_default=text("'embedded'"))
     metadata_ready   = Column(Boolean, nullable=False, server_default=text("false"))
@@ -80,6 +81,7 @@ class ImageRead(BaseModel):
     source_spider: Optional[str] = None
     embedding_version: str
     metadata_json: dict
+    artifacts_json: Optional[dict] = None
     tags: list[str]
     ingest_status: str
     metadata_ready: bool

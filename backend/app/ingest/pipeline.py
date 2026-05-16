@@ -1,12 +1,11 @@
-"""Per-image ingestion pipeline — VLM metadata extraction only.
+"""Per-image ingestion pipeline — VLM artifact extraction only.
 
 Flow per image:
-  1. SHA256 dedup — skip if already in DB
-  2. VLM caption  — title, description, raw_text via Ollama
-  3. LLM metadata — structured building fields via Ollama
-  4. Write Image record to Postgres (ingest_status='processing')
-  5. Write metadata JSON to disk
-  6. Move image from raw_data/ to storage/images/
+  1. SHA256 dedup  — skip if already in DB
+  2. VLM artifacts — single pass extracts title + full artifact JSON via Ollama
+  3. Write Image record to Postgres (ingest_status='processing')
+  4. Write metadata JSON to disk
+  5. Move image from raw_data/ to storage/images/
 
 FAISS indexing is handled separately by the backend worker (complete_image_metadata).
 """
@@ -66,8 +65,7 @@ def ingest_image(image_path: Path, settings) -> dict[str, Any]:
     import sqlalchemy as sa
     from sqlalchemy.orm import sessionmaker
 
-    from app.workers.captioner import caption_image
-    from app.workers.metadata_extractor import extract_building_metadata
+    from app.workers.captioner import extract_image_artifacts
 
     log = logger.bind(file=image_path.name)
 
@@ -86,33 +84,30 @@ def ingest_image(image_path: Path, settings) -> dict[str, Any]:
             log.info("ingest_duplicate_skipped", image_id=str(existing[0]))
             return {"status": "duplicate", "image_id": str(existing[0]), "file": image_path.name}
 
-    # ── 2. VLM caption ───────────────────────────────────────────────
-    log.info("ingest_captioning")
+    # ── 2. VLM artifact extraction (single pass) ─────────────────────
+    log.info("ingest_artifact_extraction")
+    artifacts: dict = {}
     try:
-        caption_data = caption_image(str(image_path), settings, image_vec=None, classify_style=False)
-        log.info("ingest_captioned", title=caption_data.get("title", "")[:60])
+        artifacts = extract_image_artifacts(str(image_path), settings, enrich_style=False)
+        log.info("ingest_artifacts_extracted", style=artifacts.get("style", {}).get("primary", "")[:40])
     except Exception as exc:
-        log.warning("ingest_caption_failed", error=str(exc))
-        caption_data = {}
+        log.warning("ingest_artifact_extraction_failed", error=str(exc))
 
-    # ── 3. Structured metadata extraction ────────────────────────────
-    log.info("ingest_metadata_extraction")
-    try:
-        building_meta = extract_building_metadata(
-            text_excerpt="",
-            caption_json=caption_data,
-            wikidata={},
-            settings=settings,
-        )
-        log.info("ingest_metadata_extracted", name=building_meta.get("name"))
-    except Exception as exc:
-        log.warning("ingest_metadata_failed", error=str(exc))
-        building_meta = {}
-
-    full_meta = {**caption_data, **building_meta}
-    tags = list(dict.fromkeys(
-        (building_meta.get("materials") or []) + (building_meta.get("typology") or [])
-    ))
+    title = artifacts.pop("title", "") if artifacts else ""
+    method = artifacts.pop("method", "") if artifacts else ""
+    description = artifacts.get("description", "")
+    building_type = artifacts.get("building_type", "")
+    style_classified = artifacts.get("architecture_style_classified", "") or (
+        artifacts.get("style", {}).get("primary", "") if artifacts else ""
+    )
+    tags = [style_classified] if style_classified else []
+    full_meta = {
+        "title": title,
+        "description": description,
+        "building_type": building_type,
+        "architecture_style_classified": style_classified,
+        "artifacts": artifacts,
+    }
 
     # ── 4. Destination path ──────────────────────────────────────────
     dest_dir = Path(settings.storage_root) / "images"
@@ -131,22 +126,17 @@ def ingest_image(image_path: Path, settings) -> dict[str, Any]:
                     INSERT INTO images (
                         id, storage_path, sha256, width, height,
                         caption, caption_method, license,
-                        embedding_version, metadata_json, tags,
+                        embedding_version, metadata_json, artifacts_json, tags,
                         ingest_status, metadata_ready,
-                        name, architect, year_built,
-                        location_country, location_city,
-                        typology, materials, structural_system,
-                        climate_zone, description,
+                        name, materials,
                         source_url, source_title, source_spider
                     ) VALUES (
                         :id, :storage_path, :sha256, :width, :height,
                         :caption, :caption_method, :license,
-                        :embedding_version, CAST(:metadata_json AS jsonb), :tags,
+                        :embedding_version, CAST(:metadata_json AS jsonb),
+                        CAST(:artifacts_json AS jsonb), :tags,
                         'processing', true,
-                        :name, :architect, :year_built,
-                        :location_country, :location_city,
-                        :typology, :materials, :structural_system,
-                        :climate_zone, :description,
+                        :name, :materials,
                         :source_url, :source_title, :source_spider
                     )
                 """),
@@ -156,24 +146,17 @@ def ingest_image(image_path: Path, settings) -> dict[str, Any]:
                     "sha256": sha256,
                     "width": width,
                     "height": height,
-                    "caption": caption_data.get("title", ""),
-                    "caption_method": caption_data.get("method", ""),
+                    "caption": title,
+                    "caption_method": method,
                     "license": "unknown",
                     "embedding_version": settings.embedding_version,
                     "metadata_json": json.dumps(full_meta, ensure_ascii=False, default=str),
+                    "artifacts_json": json.dumps(artifacts, ensure_ascii=False, default=str) if artifacts else None,
                     "tags": tags,
-                    "name": building_meta.get("name") or caption_data.get("title"),
-                    "architect": building_meta.get("architect"),
-                    "year_built": building_meta.get("year_built"),
-                    "location_country": building_meta.get("location_country"),
-                    "location_city": building_meta.get("location_city"),
-                    "typology": building_meta.get("typology") or [],
-                    "materials": building_meta.get("materials") or [],
-                    "structural_system": building_meta.get("structural_system"),
-                    "climate_zone": building_meta.get("climate_zone"),
-                    "description": building_meta.get("description"),
+                    "name": title or image_path.stem,
+                    "materials": artifacts.get("materials") or [],
                     "source_url": f"local://{image_path.name}",
-                    "source_title": caption_data.get("title") or image_path.stem,
+                    "source_title": title or image_path.stem,
                     "source_spider": "local_ingest",
                 },
             )

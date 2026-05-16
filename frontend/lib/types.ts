@@ -26,6 +26,28 @@ export interface BuildingMetadata {
   description?: string;
 }
 
+export interface ArtifactRelationship {
+  source: string;
+  relation: string;
+  target: string;
+}
+
+export interface ArchitecturalArtifacts {
+  style?: {
+    primary?: string;
+    secondary?: string[];
+    confidence?: number;
+  };
+  architectural_elements?: {
+    structural?: string[];
+    facade?: string[];
+    ornamental?: string[];
+  };
+  materials?: string[];
+  spatial_features?: string[];
+  relationships?: ArtifactRelationship[];
+}
+
 export interface SearchResultItem {
   building_id: string | null;
   image_id: string;
@@ -40,11 +62,50 @@ export interface SearchResultItem {
   };
   image_url: string;
   image_metadata?: Record<string, unknown>;
+  artifacts_json?: ArchitecturalArtifacts | null;
   tags?: string[];
+  ephemeral_artifacts?: EphemeralAnalysis;
+}
+
+export interface EphemeralAnalysis {
+  title?: string;
+  description?: string;
+  building_type?: string;
+  style?: {
+    primary?: string;
+    secondary?: string[];
+    confidence?: number;
+    style_evidence?: string[];
+    emergent_tags?: string[];
+  };
+  architectural_elements?: {
+    structural?: string[];
+    facade?: string[];
+    roofing?: string[];
+    openings?: string[];
+    ornamental?: string[];
+    circulation?: string[];
+  };
+  materials?: string[];
+  spatial_features?: Record<string, string[]> | string[];
+  environment?: {
+    setting?: string[];
+    urban_context?: string[];
+    landscape?: string[];
+    climate_indicators?: string[];
+  };
+  relationships?: Array<{ source: string; relation: string; target: string }>;
+  semantic_keywords?: string[];
+  retrieval_tags?: string[];
+  architecture_style_classified?: string;
+  architecture_style_top?: [string, number][];
+  vlm_unavailable?: boolean;
+  [key: string]: unknown;
 }
 
 export interface SearchResponse {
   results: SearchResultItem[];
+  analysis?: EphemeralAnalysis;
   rewritten_query?: {
     visual_descriptions: string[];
     filters: Record<string, unknown>;
@@ -101,42 +162,3 @@ export type FilterState = {
   location_country: string;
 };
 
-export const TYPOLOGY_OPTIONS = [
-  { value: 'house', label: 'House' },
-  { value: 'apartment_building', label: 'Apartment building' },
-  { value: 'school', label: 'School' },
-  { value: 'library', label: 'Library' },
-  { value: 'museum', label: 'Museum' },
-  { value: 'office', label: 'Office' },
-  { value: 'cultural_center', label: 'Cultural center' },
-  { value: 'religious', label: 'Religious' },
-  { value: 'industrial', label: 'Industrial' },
-] as const;
-
-export const MATERIAL_OPTIONS = [
-  { value: 'concrete', label: 'Concrete' },
-  { value: 'brick', label: 'Brick' },
-  { value: 'timber', label: 'Timber' },
-  { value: 'steel', label: 'Steel' },
-  { value: 'glass', label: 'Glass' },
-  { value: 'stone', label: 'Stone' },
-  { value: 'earth', label: 'Earth' },
-] as const;
-
-export const STRUCTURAL_SYSTEM_OPTIONS = [
-  { value: 'moment_frame', label: 'Moment frame' },
-  { value: 'load_bearing_wall', label: 'Load-bearing wall' },
-  { value: 'shell', label: 'Shell' },
-  { value: 'tensile', label: 'Tensile' },
-  { value: 'space_frame', label: 'Space frame' },
-] as const;
-
-export const CLIMATE_ZONE_OPTIONS = [
-  { value: 'tropical', label: 'Tropical' },
-  { value: 'hot_desert', label: 'Hot desert' },
-  { value: 'mediterranean', label: 'Mediterranean' },
-  { value: 'humid', label: 'Humid' },
-  { value: 'oceanic', label: 'Oceanic' },
-  { value: 'continental', label: 'Continental' },
-  { value: 'subarctic', label: 'Subarctic' },
-] as const;
