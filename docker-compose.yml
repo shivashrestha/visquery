@@ -68,6 +68,7 @@
       context: ./backend
       dockerfile: Dockerfile
     command: ["python", "-m", "app.ingest.main"]
+    user: root
     env_file:
       - ${DOCKER_ENV_FILE:-.env}
     environment:
