@@ -92,6 +92,31 @@
         limits:
           memory: 1500M
 
+  download-bge:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command:
+      - python
+      - -c
+      - |
+        from sentence_transformers import SentenceTransformer
+        import os
+        dest = "/data/checkpoints/bge-small-en-v1.5"
+        if os.path.exists(dest):
+            print(f"Model already at {dest}, skipping.")
+        else:
+            print("Downloading BAAI/bge-small-en-v1.5 ...")
+            m = SentenceTransformer("BAAI/bge-small-en-v1.5")
+            m.save(dest)
+            print(f"Saved to {dest}")
+    environment:
+      HF_HOME: /opt/hf-cache
+    volumes:
+      - ./storage/data/checkpoints:/data/checkpoints
+    restart: "no"
+    profiles: ["download-bge"]
+
   embed-text:
     build:
       context: ./backend
