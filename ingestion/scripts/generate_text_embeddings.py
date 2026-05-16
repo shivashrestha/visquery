@@ -43,14 +43,22 @@ except ImportError:
     sys.exit(1)
 
 # --- Paths ---
+# STORAGE_ROOT env var = /data in Docker (matches fastapi/worker services).
+# Falls back to <repo_root>/storage for local runs.
 SCRIPT_DIR   = Path(__file__).resolve().parent
 REPO_ROOT    = SCRIPT_DIR.parent.parent
-METADATA_DIR = REPO_ROOT / "storage" / "metadata"
-INDEX_DIR    = REPO_ROOT / "storage" / "vectors" / "text"
+
+_storage_env = os.environ.get("STORAGE_ROOT", "")
+STORAGE_ROOT = Path(_storage_env) if _storage_env else REPO_ROOT / "storage"
+
+METADATA_DIR = STORAGE_ROOT / "metadata"
+INDEX_DIR    = STORAGE_ROOT / "vectors" / "text"
 INDEX_FILE   = INDEX_DIR / "index.faiss"
 IDS_FILE     = INDEX_DIR / "ids.json"
 
-MODEL_NAME = "BAAI/bge-small-en-v1.5"
+# TEXT_EMBEDDING_MODEL env var = /data/checkpoints/bge-small-en-v1.5 in Docker.
+# Falls back to HF hub download for local runs.
+MODEL_NAME = os.environ.get("TEXT_EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 
 
 # ---------------------------------------------------------------------------
