@@ -32,7 +32,7 @@ logger = structlog.get_logger()
 
 class RetrievalConfig(BaseModel):
     use_filters: bool = True
-    score_threshold: float = 0.10
+    score_threshold: float = 0.10   # absolute BGE cosine floor (relative cutoff applied on top)
     top_k_retrieve: int = 100
     top_k_final: int = 20
 
@@ -240,39 +240,54 @@ async def run_retrieval(
             text_scores_raw = [s for _, s in paired]
 
     else:
-        # Text query — run both indexes in parallel
-        clip_fut = loop.run_in_executor(CLIP_EXECUTOR, emb_service.embed_text, query)
-        text_fut = loop.run_in_executor(TEXT_EXECUTOR, embed_text_query, query)
-        clip_vec, text_vec = await asyncio.gather(clip_fut, text_fut)
-
-        clip_ids, clip_scores_raw = clip_store.search(clip_vec, config.top_k_retrieve)
+        # Text query — BGE semantic search only (no CLIP inference on text path)
+        text_vec = await loop.run_in_executor(TEXT_EXECUTOR, embed_text_query, query)
         if text_store.size > 0:
             text_ids, text_scores_raw = text_store.search(text_vec, config.top_k_retrieve)
 
     latency["embed_search"] = _elapsed(t)
 
-    # 2. RRF fusion
+    # 2. Score filtering — BGE cosine scores, sorted descending (already returned in order)
     t = _tick()
     clip_score_map = dict(zip(clip_ids, clip_scores_raw))
     text_score_map = dict(zip(text_ids, text_scores_raw))
 
-    fused = _rrf_fusion(
-        [clip_ids, text_ids],
-        [clip_score_map, text_score_map],
-    )
+    if image_id is not None:
+        # Image query: RRF fusion of CLIP + text (if available)
+        fused = _rrf_fusion(
+            [clip_ids, text_ids],
+            [clip_score_map, text_score_map],
+        )
+        if clip_scores_raw:
+            logger.info("clip_scores", top5=clip_scores_raw[:5], threshold=config.score_threshold)
+        pairs = [
+            (iid, score)
+            for iid, score in fused
+            if clip_score_map.get(iid, 0.0) >= config.score_threshold
+            or text_score_map.get(iid, 0.0) >= config.score_threshold
+        ]
+    else:
+        # Text query: BGE cosine score is the rank signal — no RRF needed.
+        # Scores are domain-compressed (all arch docs share vocabulary), so use
+        # a relative cutoff: keep results within 0.20 of the top score rather
+        # than an absolute floor that would either pass everything or nothing.
+        if text_scores_raw:
+            top_score = text_scores_raw[0]
+            relative_floor = max(top_score - 0.20, config.score_threshold)
+            logger.info(
+                "text_scores",
+                top5=text_scores_raw[:5],
+                top_score=round(top_score, 4),
+                relative_floor=round(relative_floor, 4),
+            )
+            pairs = [
+                (iid, score)
+                for iid, score in zip(text_ids, text_scores_raw)
+                if score >= relative_floor
+            ]
+        else:
+            pairs = []
 
-    if clip_scores_raw:
-        logger.info("clip_scores", top5=clip_scores_raw[:5], threshold=config.score_threshold)
-    if text_scores_raw:
-        logger.info("text_scores", top5=text_scores_raw[:5])
-
-    # Keep only pairs where at least one source clears the threshold
-    pairs = [
-        (iid, score)
-        for iid, score in fused
-        if clip_score_map.get(iid, 0.0) >= config.score_threshold
-        or text_score_map.get(iid, 0.0) >= config.score_threshold
-    ]
     latency["threshold"] = _elapsed(t)
 
     if not pairs:

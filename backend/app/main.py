@@ -48,6 +48,8 @@ CORPUS_SIZE = Gauge("visquery_corpus_images_total", "Number of images in corpus"
 async def lifespan(app: FastAPI):
     import asyncio
     from app.services.embedder import warmup, CLIP_EXECUTOR
+    from app.services.text_embedder import warmup as text_warmup, TEXT_EXECUTOR
+    from app.services.vector_store import get_clip_store, get_text_store
     from app.deps import _get_engine
     from app.models.building import Base
     import app.models.source  # noqa: F401 — register Image on Base
@@ -56,8 +58,15 @@ async def lifespan(app: FastAPI):
     engine = _get_engine(settings)
     Base.metadata.create_all(bind=engine)
 
+    # Pre-load all models and FAISS indexes to eliminate first-request latency
+    get_clip_store(settings.embedding_version, settings.faiss_data_dir)
+    get_text_store(settings.faiss_data_dir)
+
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(CLIP_EXECUTOR, warmup)
+    await asyncio.gather(
+        loop.run_in_executor(CLIP_EXECUTOR, warmup),
+        loop.run_in_executor(TEXT_EXECUTOR, text_warmup),
+    )
     yield
 
 
