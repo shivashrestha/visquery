@@ -83,3 +83,5 @@ ingestion/raw_data/
 design-v2
 ingestion/test
 .playwright-mcp/
+raw_scrapped_data/*
+ml/test-api.ipynb

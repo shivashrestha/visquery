@@ -1,11 +1,12 @@
 """Per-image ingestion pipeline — VLM artifact extraction only.
 
 Flow per image:
-  1. SHA256 dedup  — skip if already in DB
-  2. VLM artifacts — single pass extracts title + full artifact JSON via Ollama
-  3. Write Image record to Postgres (ingest_status='processing')
-  4. Write metadata JSON to disk
-  5. Move image from raw_data/ to storage/images/
+  1. SHA256 dedup        — skip if already in DB
+  2. VLM artifact extract — title + full artifact JSON via Ollama
+                           HARD STOP if fails: no DB write, no JSON, no file move
+  3. Write Image record  — Postgres (ingest_status='processing')
+  4. Write metadata JSON — disk
+  5. Move image          — raw_data/ → storage/images/
 
 FAISS indexing is handled separately by the backend worker (complete_image_metadata).
 """
@@ -86,19 +87,25 @@ def ingest_image(image_path: Path, settings) -> dict[str, Any]:
 
     # ── 2. VLM artifact extraction (single pass) ─────────────────────
     log.info("ingest_artifact_extraction")
-    artifacts: dict = {}
     try:
         artifacts = extract_image_artifacts(str(image_path), settings, enrich_style=False)
-        log.info("ingest_artifacts_extracted", style=artifacts.get("style", {}).get("primary", "")[:40])
     except Exception as exc:
-        log.warning("ingest_artifact_extraction_failed", error=str(exc))
+        log.error("ingest_artifact_extraction_failed", error=str(exc))
+        return {"status": "error", "stage": "metadata", "file": image_path.name, "error": str(exc)}
 
-    title = artifacts.pop("title", "") if artifacts else ""
-    method = artifacts.pop("method", "") if artifacts else ""
+    if artifacts.get("parse_error") or artifacts.get("vlm_unavailable"):
+        reason = "parse_error" if artifacts.get("parse_error") else "vlm_unavailable"
+        log.error("ingest_metadata_failed", reason=reason)
+        return {"status": "error", "stage": "metadata", "file": image_path.name, "error": reason}
+
+    log.info("ingest_artifacts_extracted", style=artifacts.get("style", {}).get("primary", "")[:40])
+
+    title = artifacts.pop("title", "")
+    method = artifacts.pop("method", "")
     description = artifacts.get("description", "")
     building_type = artifacts.get("building_type", "")
     style_classified = artifacts.get("architecture_style_classified", "") or (
-        artifacts.get("style", {}).get("primary", "") if artifacts else ""
+        artifacts.get("style", {}).get("primary", "")
     )
     tags = [style_classified] if style_classified else []
     full_meta = {
@@ -109,7 +116,7 @@ def ingest_image(image_path: Path, settings) -> dict[str, Any]:
         "artifacts": artifacts,
     }
 
-    # ── 4. Destination path ──────────────────────────────────────────
+    # ── 3. Destination path ──────────────────────────────────────────
     dest_dir = Path(settings.storage_root) / "images"
     dest_dir.mkdir(parents=True, exist_ok=True)
     image_id = uuid.uuid4()
@@ -118,7 +125,7 @@ def ingest_image(image_path: Path, settings) -> dict[str, Any]:
 
     width, height = _image_dimensions(image_path)
 
-    # ── 5. Write DB record ───────────────────────────────────────────
+    # ── 4. Write DB record ───────────────────────────────────────────
     with Session() as db:
         try:
             db.execute(
@@ -166,10 +173,10 @@ def ingest_image(image_path: Path, settings) -> dict[str, Any]:
             log.error("ingest_db_write_failed", error=str(exc))
             return {"status": "error", "stage": "db", "file": image_path.name, "error": str(exc)}
 
-    # ── 6. Write metadata JSON ───────────────────────────────────────
+    # ── 5. Write metadata JSON ───────────────────────────────────────
     _write_metadata_json(settings, str(image_id), image_path.name, full_meta)
 
-    # ── 7. Move to production storage ───────────────────────────────
+    # ── 6. Move to production storage ───────────────────────────────
     try:
         shutil.move(str(image_path), str(dest_path))
         log.info("ingest_complete", image_id=str(image_id), dest=dest_filename)
