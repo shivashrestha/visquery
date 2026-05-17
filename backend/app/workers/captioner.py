@@ -40,6 +40,7 @@ def _get_style_vecs() -> np.ndarray:
     return _STYLE_VECS
 
 
+
 _VLM_MAX_DIM = 768
 _VLM_MAX_BYTES = 512 * 1024  # 512 KB — VLMs patch internally to 336-448px anyway
 try:

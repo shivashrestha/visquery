@@ -50,6 +50,12 @@ def _get_model():
     return _model
 
 
+def warmup() -> None:
+    """Load model and run a dummy encode to warm JIT/torch caches."""
+    model = _get_model()
+    model.encode(["warmup"], normalize_embeddings=True, convert_to_numpy=True)
+
+
 def embed_text_query(text: str) -> np.ndarray:
     """Return L2-normalised float32 (384,) embedding for a search query."""
     model = _get_model()
