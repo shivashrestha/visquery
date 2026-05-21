@@ -46,6 +46,7 @@ export interface ArchitecturalArtifacts {
   materials?: string[];
   spatial_features?: string[];
   relationships?: ArtifactRelationship[];
+  building_type?: string;
 }
 
 export interface SearchResultItem {
