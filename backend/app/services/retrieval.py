@@ -66,14 +66,19 @@ def _apply_filters(
             Image.year_built <= period[1],
         )
 
-    # Typology: VLM outputs varied phrases (e.g. "government building", "abbey").
-    # Use contains matching on the joined array string so "religious" matches
-    # ["Abbey", "Religious", "Monastery"] and "office" matches ["government building", "office"].
+    # Typology: check both Image.typology[] array (legacy) and metadata_json.building_type (V2).
+    # Image.typology is not populated by current ingest, so metadata_json is the primary source.
     typology = filters.get("typology")
     if typology:
         typology_lower = [v.lower() for v in typology]
         joined_typology = func.lower(func.array_to_string(Image.typology, ","))
-        q = q.filter(or_(*[joined_typology.ilike(f"%{v}%") for v in typology_lower]))
+        btype_meta = func.lower(Image.metadata_json["building_type"].astext)
+        btype_artifacts = func.lower(Image.artifacts_json["building_type"].astext)
+        q = q.filter(or_(
+            *[joined_typology.ilike(f"%{v}%") for v in typology_lower],
+            *[btype_meta.ilike(f"%{v}%") for v in typology_lower],
+            *[btype_artifacts.ilike(f"%{v}%") for v in typology_lower],
+        ))
 
     # Materials: case-insensitive contains on joined array string
     material = filters.get("material")
@@ -108,8 +113,9 @@ def _apply_filters(
     # Falls back to metadata_json.architecture_style_classified for pre-V2 rows
     style = filters.get("style")
     if style:
-        style_lower = [v.lower() for v in style]
-        artifacts_style = func.lower(Image.artifacts_json["style"]["primary"].astext)
+        style_lower = [v.lower().replace("_", " ") for v in style]
+        # normalize underscores→spaces so "art_deco" matches query "art deco"
+        artifacts_style = func.replace(func.lower(Image.artifacts_json["style"]["primary"].astext), "_", " ")
         meta_style = func.lower(Image.metadata_json["architecture_style_classified"].astext)
         q = q.filter(or_(
             *[artifacts_style.ilike(f"%{v}%") for v in style_lower],

@@ -184,6 +184,19 @@ export async function chatEphemeral(artifacts: EphemeralAnalysis, message: strin
   return data.answer;
 }
 
+export interface FacetValue { value: string; count: number; }
+export interface FacetsResponse {
+  style: FacetValue[];
+  building_type: FacetValue[];
+  material: FacetValue[];
+}
+
+export async function getFacets(): Promise<FacetsResponse> {
+  const res = await fetch('/api/facets');
+  if (!res.ok) throw new Error(`Facets failed (${res.status})`);
+  return res.json() as Promise<FacetsResponse>;
+}
+
 export async function chatImage(imageId: string, message: string): Promise<string> {
   const res = await fetch(`${BACKEND_URL}/api/images/${imageId}/chat`, {
     method: 'POST',
