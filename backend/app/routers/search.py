@@ -8,6 +8,7 @@ from typing import Optional
 import structlog
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -34,6 +35,58 @@ class SearchRequest(BaseModel):
     image_id: Optional[uuid.UUID] = None
     filters: SearchFilters = Field(default_factory=SearchFilters)
     score_threshold: float = Field(default=0.10, ge=0.0, le=1.0)
+
+
+@router.get("/facets")
+def get_facets(db: Session = Depends(get_db)) -> dict:
+    """Return top values per filterable facet, sourced from DB counts."""
+
+    style_rows = db.execute(sa_text("""
+        SELECT
+            replace(lower(artifacts_json->'style'->>'primary'), '_', ' ') AS val,
+            COUNT(*) AS cnt
+        FROM images
+        WHERE artifacts_json->'style'->>'primary' IS NOT NULL
+          AND artifacts_json->'style'->>'primary' NOT IN ('null', '')
+          AND ingest_status = 'ready'
+        GROUP BY val
+        ORDER BY cnt DESC
+        LIMIT 30
+    """)).fetchall()
+
+    btype_rows = db.execute(sa_text("""
+        SELECT
+            lower(metadata_json->>'building_type') AS val,
+            COUNT(*) AS cnt
+        FROM images
+        WHERE metadata_json->>'building_type' IS NOT NULL
+          AND metadata_json->>'building_type' NOT IN ('null', '')
+          AND ingest_status = 'ready'
+        GROUP BY val
+        ORDER BY cnt DESC
+        LIMIT 10
+    """)).fetchall()
+
+    mat_rows = db.execute(sa_text("""
+        SELECT
+            lower(m) AS val,
+            COUNT(*) AS cnt
+        FROM images, unnest(materials) AS m
+        WHERE materials IS NOT NULL
+          AND ingest_status = 'ready'
+        GROUP BY val
+        ORDER BY cnt DESC
+        LIMIT 30
+    """)).fetchall()
+
+    def to_list(rows):
+        return [{"value": r[0], "count": int(r[1])} for r in rows if r[0]]
+
+    return {
+        "style": to_list(style_rows),
+        "building_type": to_list(btype_rows),
+        "material": to_list(mat_rows),
+    }
 
 
 @router.post("/search")

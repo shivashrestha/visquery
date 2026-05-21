@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import { DEFAULT_FILTERS } from '@/lib/hooks';
+import { getFacets } from '@/lib/api';
 import type { FilterState, SearchResultItem, BuildingMetadata } from '@/lib/types';
 
 interface FilterSidebarProps {
@@ -13,111 +14,121 @@ interface FilterSidebarProps {
   corpus?: SearchResultItem[];
 }
 
-type Facet = {
+type FacetValue = { label: string; value: string };
+
+type FacetDef = {
   key: string;
   label: string;
-  values: string[];
   filterKey: keyof FilterState;
   isArray: boolean;
   matchMode: 'exact' | 'contains';
+  showMoreAt?: number;
   metaKey?: keyof BuildingMetadata;
   getVal?: (item: SearchResultItem) => string | string[] | undefined;
 };
 
-const FACETS: Facet[] = [
+// Static fallback values used before DB facets load.
+const STYLE_FALLBACK: FacetValue[] = [
+  'modernism', 'neoclassical', 'baroque', 'islamic architecture', 'neo gothic',
+  'beaux arts', 'contemporary', 'historicism', 'art deco', 'brutalism',
+  'neo renaissance', 'gothic revival', 'art nouveau', 'deconstructivism', 'byzantine',
+].map((v) => ({ value: v, label: toTitleCase(v) }));
+
+const BTYPE_FALLBACK: FacetValue[] = [
+  'residential', 'commercial', 'religious', 'civic', 'cultural', 'institutional',
+].map((v) => ({ value: v, label: toTitleCase(v) }));
+
+const MATERIAL_FALLBACK: FacetValue[] = [
+  'glass', 'stone', 'stucco', 'brick', 'concrete', 'steel',
+  'masonry', 'timber', 'slate', 'metal', 'aluminum', 'copper',
+].map((v) => ({ value: v, label: toTitleCase(v) }));
+
+function toTitleCase(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+const FACET_DEFS: FacetDef[] = [
   {
     key: 'style',
     label: 'Architectural Style',
-    values: [
-      'Art Deco', 'Art Nouveau', 'Baroque', 'Bauhaus', 'Beaux-Arts',
-      'Byzantine', 'Chicago School', 'Deconstructivism', 'Gothic',
-      'Greek Revival', 'International Style', 'Palladian',
-      'Postmodern', 'Romanesque',
-    ],
     filterKey: 'style',
     isArray: false,
     matchMode: 'contains',
+    showMoreAt: 10,
     getVal: (item) =>
       (item.artifacts_json?.style?.primary as string | undefined) ??
       (item.image_metadata?.architecture_style_classified as string | undefined),
   },
   {
     key: 'typology',
-    label: 'Programme / Typology',
-    values: [
-      'House / Villa', 'Apartment / Housing', 'Office',
-      'Museum / Gallery', 'Library', 'School / University',
-      'Religious / Sacred', 'Government / Civic', 'Commercial / Retail',
-      'Hotel / Hospitality', 'Industrial / Warehouse',
-      'Cultural / Theater', 'Transport / Station', 'Monastery / Abbey',
-      'Hospital / Healthcare', 'Monument / Memorial',
-    ],
+    label: 'Building Type',
     filterKey: 'typology',
-    metaKey: 'typology',
     isArray: true,
     matchMode: 'contains',
+    getVal: (item) => {
+      const bt = item.artifacts_json?.building_type as string | undefined;
+      if (bt) return bt;
+      return item.metadata?.typology as string[] | undefined;
+    },
   },
   {
     key: 'material',
     label: 'Primary Material',
-    values: [
-      'Concrete', 'Brick', 'Masonry', 'Timber', 'Steel',
-      'Glass', 'Stone', 'Earth / Adobe', 'Aluminum', 'Copper',
-    ],
     filterKey: 'material',
     metaKey: 'materials',
     isArray: true,
     matchMode: 'contains',
-  },
-  {
-    key: 'structure',
-    label: 'Structural System',
-    values: [
-      'Moment frame', 'Load-bearing wall', 'Shell / Vault',
-      'Tensile / Membrane', 'Space frame', 'Diagrid', 'Hybrid',
-    ],
-    filterKey: 'structural_system',
-    metaKey: 'structural_system',
-    isArray: false,
-    matchMode: 'contains',
-  },
-  {
-    key: 'climate',
-    label: 'Climate Zone',
-    values: [
-      'Tropical', 'Hot desert', 'Mediterranean', 'Humid subtropical',
-      'Oceanic', 'Continental', 'Subarctic', 'Alpine',
-    ],
-    filterKey: 'climate_zone',
-    metaKey: 'climate_zone',
-    isArray: false,
-    matchMode: 'contains',
+    showMoreAt: 10,
   },
 ];
 
-function normalizeFilterValue(value: string, facetKey: string): string {
-  // contains-matched fields sent as-is (lowercase) so backend ILIKE works correctly
-  const containsFacets = ['style', 'structure', 'climate', 'typology', 'material'];
-  if (containsFacets.includes(facetKey)) return value.toLowerCase();
-  return value.toLowerCase().replace(/\s+/g, '_');
+function normalizeVal(value: string): string {
+  return value.toLowerCase().replace(/_/g, ' ');
 }
 
-function toggleValue(arr: string[], value: string, facetKey: string): string[] {
-  const normalized = normalizeFilterValue(value, facetKey);
-  const has = arr.some((v) => v.toLowerCase() === normalized || v.toLowerCase() === value.toLowerCase());
-  if (has) return arr.filter((v) => v.toLowerCase() !== normalized && v.toLowerCase() !== value.toLowerCase());
-  return [...arr, normalized];
+function normalizeFilterValue(value: string): string {
+  return value.toLowerCase();
 }
 
-function isActive(arr: string[], value: string, facetKey: string): boolean {
-  const normalized = normalizeFilterValue(value, facetKey);
-  return arr.some((v) => v.toLowerCase() === normalized || v.toLowerCase() === value.toLowerCase());
+function toggleValue(arr: string[], value: string): string[] {
+  const norm = normalizeFilterValue(value);
+  const has = arr.some((v) => normalizeVal(v) === norm || v.toLowerCase() === norm);
+  if (has) return arr.filter((v) => normalizeVal(v) !== norm && v.toLowerCase() !== norm);
+  return [...arr, norm];
 }
 
-function getItemVal(item: SearchResultItem, f: Facet): string | string[] | undefined {
+function isActive(arr: string[], value: string): boolean {
+  const norm = normalizeFilterValue(value);
+  return arr.some((v) => normalizeVal(v) === norm || v.toLowerCase() === norm);
+}
+
+function getItemVal(item: SearchResultItem, f: FacetDef): string | string[] | undefined {
   if (f.getVal) return f.getVal(item);
   if (!f.metaKey) return undefined;
   return item.metadata[f.metaKey] as string | string[] | undefined;
+}
+
+function countValuesInCorpus(
+  corpus: SearchResultItem[],
+  facets: FacetDef[],
+  facetValues: Record<string, FacetValue[]>,
+): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  facets.forEach((f) => {
+    out[f.key] = {};
+    (facetValues[f.key] ?? []).forEach((fv) => { out[f.key][fv.value] = 0; });
+    corpus.forEach((item) => {
+      const val = getItemVal(item, f);
+      const values = Array.isArray(val) ? val : val ? [val] : [];
+      const joined = values.map(normalizeVal).join(',');
+      (facetValues[f.key] ?? []).forEach((fv) => {
+        if (joined.includes(fv.value.toLowerCase())) {
+          out[f.key][fv.value] = (out[f.key][fv.value] ?? 0) + 1;
+        }
+      });
+    });
+  });
+  return out;
 }
 
 export default function FilterSidebar({
@@ -127,55 +138,42 @@ export default function FilterSidebar({
   corpus = [],
 }: FilterSidebarProps) {
   const [open, setOpen] = useState<Record<string, boolean>>({
-    style: true, typology: true, material: true, structure: false, climate: false,
+    style: true, typology: true, material: true,
   });
+  const [showMore, setShowMore] = useState<Record<string, boolean>>({});
+
+  // Facet values: start with fallback, replace when DB data arrives
+  const [facetValues, setFacetValues] = useState<Record<string, FacetValue[]>>({
+    style: STYLE_FALLBACK,
+    typology: BTYPE_FALLBACK,
+    material: MATERIAL_FALLBACK,
+  });
+
+  useEffect(() => {
+    getFacets()
+      .then((data) => {
+        const toFV = (items: { value: string }[]) =>
+          items.map((i) => ({ value: i.value, label: toTitleCase(i.value) }));
+        setFacetValues({
+          style: data.style.length ? toFV(data.style) : STYLE_FALLBACK,
+          typology: data.building_type.length ? toFV(data.building_type) : BTYPE_FALLBACK,
+          material: data.material.length ? toFV(data.material) : MATERIAL_FALLBACK,
+        });
+      })
+      .catch(() => { /* keep fallback */ });
+  }, []);
 
   const update = (partial: Partial<FilterState>) =>
     onChange({ ...filters, ...partial });
 
-  // Compute facet counts from corpus
-  const counts = useMemo(() => {
-    const out: Record<string, Record<string, number>> = {};
-    FACETS.forEach((f) => {
-      out[f.key] = {};
-      f.values.forEach((v) => { out[f.key][v] = 0; });
-      corpus.forEach((item) => {
-        const val = getItemVal(item, f);
-        if (Array.isArray(val)) {
-          const joined = (val as string[]).join(',').toLowerCase();
-          f.values.forEach((v) => {
-            if (f.matchMode === 'contains') {
-              if (joined.includes(v.toLowerCase())) {
-                out[f.key][v] = (out[f.key][v] ?? 0) + 1;
-              }
-            } else {
-              if ((val as string[]).some((x) => x.toLowerCase() === v.toLowerCase())) {
-                out[f.key][v] = (out[f.key][v] ?? 0) + 1;
-              }
-            }
-          });
-        } else if (typeof val === 'string') {
-          const valLower = val.toLowerCase();
-          f.values.forEach((v) => {
-            if (f.matchMode === 'contains') {
-              if (valLower.includes(v.toLowerCase())) {
-                out[f.key][v] = (out[f.key][v] ?? 0) + 1;
-              }
-            } else if (v.toLowerCase() === valLower) {
-              out[f.key][v] = (out[f.key][v] ?? 0) + 1;
-            }
-          });
-        }
-      });
-    });
-    return out;
-  }, [corpus]);
+  const counts = useMemo(
+    () => countValuesInCorpus(corpus, FACET_DEFS, facetValues),
+    [corpus, facetValues],
+  );
 
   const total = [
     filters.typology.length,
     filters.material.length,
-    filters.structural_system.length,
-    filters.climate_zone.length,
     filters.style.length,
   ].reduce((a, b) => a + b, 0);
 
@@ -190,8 +188,14 @@ export default function FilterSidebar({
         )}
       </div>
 
-      {FACETS.map((f) => {
+      {FACET_DEFS.map((f) => {
         const activeVals = filters[f.filterKey] as string[];
+        const values = facetValues[f.key] ?? [];
+        const cutoff = f.showMoreAt ?? values.length;
+        const expanded = showMore[f.key] ?? false;
+        const visible = expanded ? values : values.slice(0, cutoff);
+        const hiddenCount = values.length - cutoff;
+
         return (
           <div className="facet-group" key={f.key}>
             <button
@@ -199,9 +203,7 @@ export default function FilterSidebar({
               onClick={() => setOpen((o) => ({ ...o, [f.key]: !o[f.key] }))}
             >
               <span>{f.label}</span>
-              <span className="chev">
-                <ChevronDown size={11} />
-              </span>
+              <span className="chev"><ChevronDown size={11} /></span>
             </button>
             <AnimatePresence initial={false}>
               {open[f.key] && (
@@ -213,31 +215,39 @@ export default function FilterSidebar({
                   transition={{ duration: 0.22, ease: 'easeOut' }}
                   style={{ overflow: 'hidden' }}
                 >
-                  {f.values.map((v) => {
-                    const on = isActive(activeVals, v, f.key);
-                    const count = counts[f.key]?.[v] ?? 0;
+                  {visible.map((fv) => {
+                    const on = isActive(activeVals, fv.value);
+                    const count = counts[f.key]?.[fv.value] ?? 0;
                     return (
                       <motion.div
-                        key={v}
+                        key={fv.value}
                         className={`facet-item${on ? ' on' : ''}`}
                         onClick={() =>
-                          update({ [f.filterKey]: toggleValue(activeVals, v, f.key) } as Partial<FilterState>)
+                          update({ [f.filterKey]: toggleValue(activeVals, fv.value) } as Partial<FilterState>)
                         }
                         whileTap={{ scale: 0.98 }}
                       >
                         <span className="box" />
-                        <span>{v}</span>
+                        <span>{fv.label}</span>
                         {count > 0 && <span className="count">{count}</span>}
                       </motion.div>
                     );
                   })}
+                  {hiddenCount > 0 && (
+                    <button
+                      className="clear-link"
+                      style={{ marginTop: 4, fontSize: '0.7rem', display: 'block' }}
+                      onClick={() => setShowMore((s) => ({ ...s, [f.key]: !expanded }))}
+                    >
+                      {expanded ? 'Show less' : `+${hiddenCount} more`}
+                    </button>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
         );
       })}
-
     </aside>
   );
 }

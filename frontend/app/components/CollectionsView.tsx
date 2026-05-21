@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import type { SearchResultItem } from '@/lib/types';
 import BuildingCard from './BuildingCard';
@@ -16,36 +16,40 @@ interface CollectionsViewProps {
 
 type Collection = { name: string; items: SearchResultItem[] };
 
-const ARCHITECTURE_STYLES = [
-  'Achaemenid architecture',
-  'American Foursquare architecture',
-  'American craftsman style',
-  'Ancient Egyptian architecture',
-  'Art Deco architecture',
-  'Art Nouveau architecture',
-  'Baroque architecture',
-  'Bauhaus architecture',
-  'Beaux-Arts architecture',
-  'Byzantine architecture',
-  'Chicago school architecture',
-  'Colonial architecture',
-  'Deconstructivism',
-  'Edwardian architecture',
-  'Georgian architecture',
-  'Gothic architecture',
-  'Greek Revival architecture',
-  'International style',
-  'Novelty architecture',
-  'Palladian architecture',
-  'Postmodern architecture',
-  'Queen Anne architecture',
-  'Romanesque architecture',
+// Ordered by frequency in dataset. key = lowercase term sent to style filter.
+const ARCHITECTURE_STYLES: { name: string; key: string }[] = [
+  { name: 'Modernism', key: 'modernism' },
+  { name: 'Neoclassical', key: 'neoclassical' },
+  { name: 'Baroque', key: 'baroque' },
+  { name: 'Islamic Architecture', key: 'islamic' },
+  { name: 'Neo-Gothic', key: 'neo gothic' },
+  { name: 'Beaux-Arts', key: 'beaux arts' },
+  { name: 'Contemporary', key: 'contemporary' },
+  { name: 'Historicism', key: 'historicism' },
+  { name: 'Art Deco', key: 'art deco' },
+  { name: 'Brutalism', key: 'brutalism' },
+  { name: 'Neo-Renaissance', key: 'neo renaissance' },
+  { name: 'Gothic Revival', key: 'gothic revival' },
+  { name: 'Art Nouveau', key: 'art nouveau' },
+  { name: 'Deconstructivism', key: 'deconstructivism' },
+  { name: 'Byzantine', key: 'byzantine' },
+  { name: 'Chicago School', key: 'chicago school' },
+  { name: 'Greek Revival', key: 'greek revival' },
+  { name: 'International Style', key: 'international style' },
+  { name: 'Palladian', key: 'palladian' },
+  { name: 'Postmodern', key: 'postmodern' },
+  { name: 'Romanesque', key: 'romanesque' },
+  { name: 'Queen Anne', key: 'queen anne' },
+  { name: 'Achaemenid', key: 'achaemenid' },
 ];
+
+const CACHE_KEY = 'collections_cache_v1';
 
 export default function CollectionsView({ favItems, onOpen, favs, onFav }: CollectionsViewProps) {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [personalItems, setPersonalItems] = useState<SearchResultItem[]>([]);
+  const loadedRef = useRef(false);
 
   useEffect(() => {
     const imgs = getPersonalImages();
@@ -53,16 +57,29 @@ export default function CollectionsView({ favItems, onOpen, favs, onFav }: Colle
   }, []);
 
   useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
+
+    // Serve from cache if available
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        setCollections(JSON.parse(cached) as Collection[]);
+        setLoading(false);
+        return;
+      }
+    } catch {}
+
     let cancelled = false;
     async function load() {
       setLoading(true);
       const results = await Promise.allSettled(
         ARCHITECTURE_STYLES.map(async (style) => {
           try {
-            const r = await search({ query: style });
-            return { name: style, items: r.results.slice(0, 4) };
+            const r = await search({ query: style.name, filters: { style: [style.key] } });
+            return { name: style.name, items: r.results.slice(0, 4) };
           } catch {
-            return { name: style, items: [] as SearchResultItem[] };
+            return { name: style.name, items: [] as SearchResultItem[] };
           }
         }),
       );
@@ -71,19 +88,18 @@ export default function CollectionsView({ favItems, onOpen, favs, onFav }: Colle
         .filter((r): r is PromiseFulfilledResult<Collection> => r.status === 'fulfilled')
         .map((r) => r.value)
         .filter((c) => c.items.length > 0);
-      setCollections([
-        ...cols,
-        { name: 'Saved by you', items: favItems },
-      ]);
+      setCollections(cols);
+      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(cols)); } catch {}
       setLoading(false);
     }
     load();
     return () => { cancelled = true; };
-  }, [favItems]);
+  }, []); // favItems intentionally excluded — fav changes must not re-fetch all styles
 
   const allCollections: Collection[] = [
     ...(personalItems.length > 0 ? [{ name: 'Personal', items: personalItems }] : []),
     ...collections,
+    { name: 'Saved by you', items: favItems },
   ];
 
   return (
