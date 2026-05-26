@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
@@ -317,10 +318,15 @@ async def run_retrieval(
     latency["metadata"] = _elapsed(t)
 
     # 5. Build results
+    from app.workers.ingest_worker import _resolve_storage_path
     results: list[dict[str, Any]] = []
     for iid in final_ids:
         img = meta_map.get(iid)
         if img is None:
+            continue
+        resolved = _resolve_storage_path(img.storage_path, settings)
+        if not Path(resolved).exists():
+            logger.debug("search_skip_missing_file", image_id=iid, path=img.storage_path)
             continue
         results.append({
             "building_id": None,

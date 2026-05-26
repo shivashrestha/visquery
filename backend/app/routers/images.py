@@ -122,8 +122,10 @@ async def list_images(
     limit: int = 40,
     sort: str = "created_at_desc",
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
     """List all indexed images with pagination, shaped like search results."""
+    from app.workers.ingest_worker import _resolve_storage_path
     q = db.query(Image)
     if sort == "created_at_desc":
         q = q.order_by(Image.created_at.desc())
@@ -139,6 +141,9 @@ async def list_images(
 
     results = []
     for img in images:
+        resolved = _resolve_storage_path(img.storage_path, settings)
+        if not Path(resolved).exists():
+            continue
         results.append({
             "building_id": None,
             "image_id": str(img.id),
@@ -306,6 +311,7 @@ async def search_by_image(
     from app.services import embedder as emb_service
     from app.services.image_optimizer import optimize_for_embedding
     from app.services.retrieval import _fetch_result_metadata, _image_to_metadata
+    from app.workers.ingest_worker import _resolve_storage_path
 
     loop = asyncio.get_running_loop()
     t0 = time.perf_counter()
@@ -328,6 +334,9 @@ async def search_by_image(
     for iid in final_ids:
         img = meta_map.get(iid)
         if img is None:
+            continue
+        resolved = _resolve_storage_path(img.storage_path, settings)
+        if not Path(resolved).exists():
             continue
         results.append({
             "building_id": None,
