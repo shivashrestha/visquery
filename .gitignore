@@ -86,3 +86,4 @@ ingestion/test
 raw_scrapped_data/*
 ml/test-api.ipynb
 storage/tmp/
+raw_scrapped_data_1

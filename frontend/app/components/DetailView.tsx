@@ -16,6 +16,7 @@ interface DetailViewProps {
   favs: Record<string, boolean>;
   onFav: (item: SearchResultItem) => void;
   onOpen: (item: SearchResultItem) => void;
+  hideSource?: boolean;
 }
 
 const STARTER_QS = [
@@ -105,6 +106,7 @@ export default function DetailView({
   favs,
   onFav,
   onOpen,
+  hideSource = false,
 }: DetailViewProps) {
   const [activeImg, setActiveImg] = useState(0);
   const [mobileTab, setMobileTab] = useState<'detail' | 'chat'>('detail');
@@ -195,6 +197,11 @@ export default function DetailView({
   const fav = !!favs[item.image_id];
 
   const thumbs = [item, ...related.slice(0, 4)];
+
+  useEffect(() => {
+    setMsgs([{ who: 'ai', text: initialAiText }]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.image_id]);
 
   useEffect(() => {
     if (streamRef.current) {
@@ -294,7 +301,7 @@ export default function DetailView({
             >
               <Layers size={12} /> Artifacts
             </motion.button>
-            {item.source.url && (
+            {item.source.url && !hideSource && (
               <a
                 href={item.source.url}
                 target="_blank"
@@ -523,15 +530,13 @@ export default function DetailView({
         </div>
 
         <div className="rag-input">
-          {msgs.length <= 1 && (
-            <div className="rag-suggest">
-              {STARTER_QS.map((q) => (
-                <button key={q} onClick={() => ask(q)}>
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="rag-suggest">
+            {STARTER_QS.map((q) => (
+              <button key={q} onClick={() => ask(q)}>
+                {q}
+              </button>
+            ))}
+          </div>
           <div className="rag-input-row">
             <input
               value={draft}

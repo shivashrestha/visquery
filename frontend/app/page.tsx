@@ -12,6 +12,7 @@ import ResultsView from './components/ResultsView';
 import DetailView from './components/DetailView';
 import CollectionsView from './components/CollectionsView';
 import LibraryView from './components/LibraryView';
+import StudioView from './components/StudioView';
 import { useSearch } from '@/lib/hooks';
 import type { SearchResultItem } from '@/lib/types';
 import { analyzeEphemeral } from '@/lib/api';
@@ -301,6 +302,7 @@ type AppView =
   | { name: 'results' }
   | { name: 'library' }
   | { name: 'collections' }
+  | { name: 'studio' }
   | { name: 'detail'; item: SearchResultItem; from: 'results' | 'library' | 'collections' };
 
 const heroVariants = {
@@ -478,6 +480,8 @@ export default function HomePage() {
       setView({ name: 'library' });
     } else if (name === 'collections') {
       setView({ name: 'collections' });
+    } else if (name === 'studio') {
+      setView({ name: 'studio' });
     }
   }, [clearSearch]);
 
@@ -504,7 +508,7 @@ export default function HomePage() {
   }, [view, allResults]);
 
   const viewName: ViewName =
-    view.name === 'detail' ? view.from : view.name;
+    view.name === 'detail' ? view.from : (view.name as ViewName);
 
   return (
     <div className="app" data-theme={theme}>
@@ -679,6 +683,20 @@ export default function HomePage() {
           </motion.div>
         )}
 
+        {/* ── Studio ── */}
+        {view.name === 'studio' && (
+          <motion.div
+            key="studio"
+            style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            transition={{ duration: 0.25 }}
+          >
+            <StudioView />
+          </motion.div>
+        )}
+
         {/* ── Detail ── */}
         {view.name === 'detail' && (
           <motion.div
@@ -696,6 +714,7 @@ export default function HomePage() {
               favs={favs}
               onFav={toggleFav}
               onOpen={handleOpen}
+              hideSource={view.from === 'library'}
             />
           </motion.div>
         )}
