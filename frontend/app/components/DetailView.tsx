@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CachedImage from './CachedImage';
-import { ArrowLeft, Heart, ExternalLink, MessageSquare, Info, Sparkles, Bot, Layers } from 'lucide-react';
+import { ArrowLeft, Heart, MessageSquare, Info, Sparkles, Bot, Layers } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
 import BuildingCard from './BuildingCard';
 import ArtifactsModal from './ArtifactsModal';
@@ -16,7 +16,6 @@ interface DetailViewProps {
   favs: Record<string, boolean>;
   onFav: (item: SearchResultItem) => void;
   onOpen: (item: SearchResultItem) => void;
-  hideSource?: boolean;
 }
 
 const STARTER_QS = [
@@ -106,7 +105,6 @@ export default function DetailView({
   favs,
   onFav,
   onOpen,
-  hideSource = false,
 }: DetailViewProps) {
   const [activeImg, setActiveImg] = useState(0);
   const [mobileTab, setMobileTab] = useState<'detail' | 'chat'>('detail');
@@ -301,16 +299,6 @@ export default function DetailView({
             >
               <Layers size={12} /> Artifacts
             </motion.button>
-            {item.source.url && !hideSource && (
-              <a
-                href={item.source.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-ghost"
-              >
-                <ExternalLink size={12} /> Source
-              </a>
-            )}
           </div>
         </div>
 
