@@ -714,7 +714,6 @@ export default function HomePage() {
               favs={favs}
               onFav={toggleFav}
               onOpen={handleOpen}
-              hideSource={view.from === 'library'}
             />
           </motion.div>
         )}
