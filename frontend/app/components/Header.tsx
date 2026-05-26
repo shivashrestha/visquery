@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Menu, X, Sun, Moon } from 'lucide-react';
 import VQLogo from './VQLogo';
 
-export type ViewName = 'home' | 'results' | 'library' | 'collections' | 'detail';
+export type ViewName = 'home' | 'results' | 'library' | 'collections' | 'studio' | 'detail';
 
 interface HeaderProps {
   view: ViewName;
@@ -47,6 +47,12 @@ export default function Header({ view, onNav, resultCount, theme, onToggleTheme 
               onClick={() => handleNav('collections')}
             >
               Collections
+            </button>
+            <button
+              className={view === 'studio' ? 'is-active' : ''}
+              onClick={() => handleNav('studio')}
+            >
+              Studio
             </button>
           </nav>
         </div>
@@ -96,6 +102,12 @@ export default function Header({ view, onNav, resultCount, theme, onToggleTheme 
             onClick={() => handleNav('collections')}
           >
             Collections
+          </button>
+          <button
+            className={view === 'studio' ? 'is-active' : ''}
+            onClick={() => handleNav('studio')}
+          >
+            Studio
           </button>
         </nav>
       )}

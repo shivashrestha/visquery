@@ -923,6 +923,16 @@
   background: var(--bg-soft);
   transition: none;
 }
+.card-img img,
+.card-img .pp {
+  transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1), filter 0.5s ease;
+  will-change: transform;
+}
+.card:hover .card-img img,
+.card:hover .card-img .pp {
+  transform: scale(1.05);
+  filter: brightness(1.04);
+}
 .card:hover .card-img {
   transform: none;
   box-shadow: none;
@@ -1210,7 +1220,7 @@
 
 /* AI badge â€” inline, next to section label */
 .ai-inline-badge {
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 3px;
   font-family: var(--mono);
@@ -1341,7 +1351,7 @@
   color: var(--ink-muted);
 }
 .msg .who.ai-who { display: inline-flex; align-items: center; gap: 4px; }
-.msg .who .ai-icon { opacity: 0.5; flex-shrink: 0; }
+.msg .who .ai-icon { opacity: 0.8; flex-shrink: 0; color:blueviolet }
 .msg.user { align-self: flex-end; max-width: 88%; }
 .msg.user .bubble {
   background: var(--bg-soft);
@@ -1619,7 +1629,16 @@
 .pin-card:hover .pin-img {
   box-shadow: 0 4px 20px rgba(15, 23, 42, 0.10);
 }
-.pin-img img { border-radius: 3px; display: block; }
+.pin-img img {
+  border-radius: 3px;
+  display: block;
+  transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1), filter 0.5s ease;
+  will-change: transform;
+}
+.pin-card:hover .pin-img img {
+  transform: scale(1.05);
+  filter: brightness(1.04);
+}
 .pin-fav {
   position: absolute;
   top: 7px; right: 7px;

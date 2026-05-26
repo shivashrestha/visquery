@@ -162,7 +162,7 @@ export default function LibraryView({ onOpen, favs, onFav }: LibraryViewProps) {
     setSort(s);
   };
 
-  // Client-side filter application — all string filters use contains matching to align with backend ILIKE
+  // Client-side filter — normalize underscores to spaces for artifacts_json snake_case values
   const filtered = items.filter(item => {
     const m = item.metadata;
 
@@ -171,28 +171,23 @@ export default function LibraryView({ onOpen, favs, onFav }: LibraryViewProps) {
         (item.artifacts_json?.style?.primary as string | undefined) ??
         (item.image_metadata?.architecture_style_classified as string | undefined) ??
         ''
-      ).toLowerCase();
+      ).toLowerCase().replace(/_/g, ' ');
       if (!filters.style.some(s => styleVal.includes(s.toLowerCase()))) return false;
     }
 
     if (filters.typology.length > 0) {
-      const joined = (m.typology ?? []).join(',').toLowerCase();
-      if (!filters.typology.some(t => joined.includes(t.toLowerCase()))) return false;
+      // metadata.typology is never populated — read building_type from artifacts/metadata_json
+      const bt = (
+        (item.artifacts_json?.building_type as string | undefined) ??
+        (item.image_metadata?.building_type as string | undefined) ??
+        (m.typology ?? []).join(',')
+      ).toLowerCase();
+      if (!filters.typology.some(t => bt.includes(t.toLowerCase()))) return false;
     }
 
     if (filters.material.length > 0) {
       const joined = (m.materials ?? []).join(',').toLowerCase();
       if (!filters.material.some(t => joined.includes(t.toLowerCase()))) return false;
-    }
-
-    if (filters.structural_system.length > 0) {
-      const val = (m.structural_system ?? '').toLowerCase();
-      if (!filters.structural_system.some(s => val.includes(s.toLowerCase()))) return false;
-    }
-
-    if (filters.climate_zone.length > 0) {
-      const val = (m.climate_zone ?? '').toLowerCase();
-      if (!filters.climate_zone.some(z => val.includes(z.toLowerCase()))) return false;
     }
 
     if (filters.location_country && m.location_country !== filters.location_country) return false;
@@ -204,7 +199,8 @@ export default function LibraryView({ onOpen, favs, onFav }: LibraryViewProps) {
     return true;
   });
 
-  const hasMore = items.length < total;
+  // hasMore: still fetch more pages even when filtered=0 (more pages may have matching items)
+  const hasMore = items.length < total && filtered.length > 0;
 
   return (
     <div className="results-shell">
