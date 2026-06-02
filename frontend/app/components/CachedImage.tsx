@@ -60,7 +60,6 @@ export default function CachedImage({
       blurDataURL={showPlaceholder ? BLUR_PLACEHOLDER : undefined}
       onLoad={handleLoad}
       onError={onError}
-      unoptimized
       style={style}
     />
   );

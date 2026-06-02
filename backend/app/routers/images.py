@@ -9,7 +9,7 @@ from pathlib import Path
 
 import redis
 import structlog
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from rq import Queue
@@ -190,21 +190,59 @@ async def get_image_status(image_id: uuid.UUID, db: Session = Depends(get_db)) -
 @router.get("/images/{image_id}/raw")
 async def get_image_raw(
     image_id: uuid.UUID,
+    request: Request,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Response:
-    image = db.query(Image).filter(Image.id == image_id).first()
-    if image is None:
-        raise HTTPException(status_code=404, detail="Image not found")
+    import redis as _redis
     from app.workers.ingest_worker import _resolve_storage_path
-    resolved = _resolve_storage_path(image.storage_path, settings)
-    local = Path(resolved)
+
+    image_id_str = str(image_id)
+    storage_path: str | None = None
+    sha256: str | None = None
+
+    # Redis path cache — avoids DB query on every image serve
+    try:
+        rc = _redis.from_url(settings.redis_url, socket_connect_timeout=1)
+        cached = rc.hgetall(f"img:meta:{image_id_str}")
+        if cached:
+            storage_path = (cached.get(b"path") or b"").decode() or None
+            sha256 = (cached.get(b"sha256") or b"").decode() or None
+    except Exception:
+        pass
+
+    if storage_path is None:
+        image = db.query(Image).filter(Image.id == image_id).first()
+        if image is None:
+            raise HTTPException(status_code=404, detail="Image not found")
+        storage_path = _resolve_storage_path(image.storage_path, settings)
+        sha256 = image.sha256 or ""
+        if storage_path != image.storage_path:
+            image.storage_path = storage_path
+            db.commit()
+        # Populate cache for next request
+        try:
+            rc = _redis.from_url(settings.redis_url, socket_connect_timeout=1)
+            rc.hset(f"img:meta:{image_id_str}", mapping={"path": storage_path, "sha256": sha256 or ""})
+            rc.expire(f"img:meta:{image_id_str}", 86400)
+        except Exception:
+            pass
+
+    local = Path(storage_path)
     if not local.exists():
         raise HTTPException(status_code=404, detail="Image not found in storage")
-    if resolved != image.storage_path:
-        image.storage_path = resolved
-        db.commit()
-    return Response(content=local.read_bytes(), media_type=_guess_media_type(local.suffix))
+
+    etag = f'"{sha256}"' if sha256 else None
+
+    # Conditional request: return 304 if client has fresh copy
+    if etag and request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "public, max-age=31536000, immutable"})
+
+    headers: dict[str, str] = {"Cache-Control": "public, max-age=31536000, immutable"}
+    if etag:
+        headers["ETag"] = etag
+
+    return Response(content=local.read_bytes(), media_type=_guess_media_type(local.suffix), headers=headers)
 
 
 @router.get("/images/{image_id}", response_model=ImageRead)

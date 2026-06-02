@@ -12,7 +12,7 @@ import ResultsView from './components/ResultsView';
 import DetailView from './components/DetailView';
 import CollectionsView from './components/CollectionsView';
 import LibraryView from './components/LibraryView';
-import StudioView from './components/StudioView';
+import StudioInline from './components/studio/StudioInline';
 import { useSearch } from '@/lib/hooks';
 import type { SearchResultItem } from '@/lib/types';
 import { analyzeEphemeral } from '@/lib/api';
@@ -319,7 +319,15 @@ const chipsVariants = {
 };
 
 export default function HomePage() {
-  const [view, setView] = useState<AppView>({ name: 'home' });
+  const [view, setView] = useState<AppView>(() => {
+    if (typeof window === 'undefined') return { name: 'home' };
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get('view');
+    if (v === 'studio') return { name: 'studio' };
+    if (v === 'library') return { name: 'library' };
+    if (v === 'collections') return { name: 'collections' };
+    return { name: 'home' };
+  });
   const [uploadAnalyzing, setUploadAnalyzing] = useState(false);
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null);
   const [theme, setTheme] = useState<'monograph' | 'dark'>('monograph');
@@ -693,7 +701,7 @@ export default function HomePage() {
             exit={{ opacity: 0, transition: { duration: 0.15 } }}
             transition={{ duration: 0.25 }}
           >
-            <StudioView />
+            <StudioInline />
           </motion.div>
         )}
 
