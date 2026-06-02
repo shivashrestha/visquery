@@ -21,6 +21,7 @@ class ContactRequest(BaseModel):
     name: str
     email: EmailStr
     message: str
+    organization: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -42,6 +43,16 @@ class ContactRequest(BaseModel):
             raise ValueError("Message too long (max 4 000 chars).")
         return v
 
+    @field_validator("organization")
+    @classmethod
+    def organization_length(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if len(v) > 200:
+                raise ValueError("Organization name too long.")
+            return v or None
+        return v
+
 
 @router.post("/contact")
 async def send_contact(body: ContactRequest) -> dict:
@@ -56,9 +67,14 @@ async def send_contact(body: ContactRequest) -> dict:
     safe_name = html.escape(body.name)
     safe_email = html.escape(str(body.email))
     safe_message = html.escape(body.message)
+    org_line = (
+        f"<p><strong>Organization:</strong> {html.escape(body.organization)}</p>"
+        if body.organization else ""
+    )
     html_body = (
         f"<p><strong>Name:</strong> {safe_name}</p>"
         f"<p><strong>Email:</strong> {safe_email}</p>"
+        f"{org_line}"
         f"<p><strong>Message:</strong></p>"
         f"<p style='white-space:pre-wrap'>{safe_message}</p>"
     )

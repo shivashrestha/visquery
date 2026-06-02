@@ -621,7 +621,15 @@ export default function StudioLanding({ onLogin }: StudioLandingProps) {
             </form>
 
             <p className="vqs-login-foot">
-              Don&apos;t have access? <a href="#contact">Contact us</a> to request Studio credentials.
+              Don&apos;t have access?{' '}
+              <button
+                type="button"
+                className="vqs-login-foot-link"
+                onClick={() => setShowContact(true)}
+              >
+                Contact us
+              </button>{' '}
+              to request Studio credentials.
             </p>
           </motion.div>
         </div>
@@ -845,7 +853,7 @@ export default function StudioLanding({ onLogin }: StudioLandingProps) {
       </div>
 
       <AnimatePresence>
-        {showContact && <ContactModal onClose={() => setShowContact(false)} />}
+        {showContact && <ContactModal variant="request-access" onClose={() => setShowContact(false)} />}
       </AnimatePresence>
     </div>
   );
