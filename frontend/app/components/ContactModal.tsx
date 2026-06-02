@@ -6,16 +6,36 @@ import { X, Send, CheckCircle } from 'lucide-react';
 
 interface ContactModalProps {
   onClose: () => void;
+  variant?: 'contact' | 'request-access';
 }
 
 type Status = 'idle' | 'sending' | 'success' | 'error';
 
-export default function ContactModal({ onClose }: ContactModalProps) {
+const VARIANTS = {
+  'contact': {
+    title: 'Contact',
+    subtitle: 'Get in touch — we’ll respond within 48 hours.',
+    messagePlaceholder: 'What’s on your mind?',
+    successLine: 'We’ll get back to you soon.',
+  },
+  'request-access': {
+    title: 'Request Studio Access',
+    subtitle: 'Tell us about your practice — we’ll follow up within 48 hours.',
+    messagePlaceholder: 'Describe your use case, project type, or what you’d like to explore with Studio.',
+    successLine: 'We’ll review your request and follow up shortly.',
+  },
+} as const;
+
+export default function ContactModal({ onClose, variant = 'contact' }: ContactModalProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [organization, setOrganization] = useState('');
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+
+  const config = VARIANTS[variant];
+  const isRequestAccess = variant === 'request-access';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,10 +45,19 @@ export default function ContactModal({ onClose }: ContactModalProps) {
     setErrorMsg('');
 
     try {
+      const payload: Record<string, string> = {
+        name: name.trim(),
+        email: email.trim(),
+        message: message.trim(),
+      };
+      if (isRequestAccess && organization.trim()) {
+        payload.organization = organization.trim();
+      }
+
       const res = await fetch('/api/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), email: email.trim(), message: message.trim() }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -57,14 +86,14 @@ export default function ContactModal({ onClose }: ContactModalProps) {
     >
       <motion.div
         className="privacy-modal"
-        style={{ maxWidth: 540 }}
+        style={{ maxWidth: 560 }}
         initial={{ opacity: 0, y: 16, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 10, scale: 0.97 }}
         transition={{ duration: 0.25, ease: [0.22, 0.61, 0.36, 1] }}
       >
         <div className="privacy-modal-header">
-          <span id="contact-modal-title" className="privacy-modal-title">Contact</span>
+          <span id="contact-modal-title" className="privacy-modal-title">{config.title}</span>
           <button
             className="privacy-modal-close"
             onClick={onClose}
@@ -103,7 +132,7 @@ export default function ContactModal({ onClose }: ContactModalProps) {
                   letterSpacing: '0.06em',
                   margin: 0,
                 }}>
-                  We&apos;ll get back to you soon.
+                  {config.successLine}
                 </p>
               </motion.div>
             ) : (
@@ -121,7 +150,7 @@ export default function ContactModal({ onClose }: ContactModalProps) {
                   letterSpacing: '0.06em',
                   margin: '0 0 4px',
                 }}>
-                  Get in touch — we&apos;ll respond within 48 hours.
+                  {config.subtitle}
                 </p>
 
                 <div style={{ display: 'flex', gap: '12px' }}>
@@ -154,6 +183,24 @@ export default function ContactModal({ onClose }: ContactModalProps) {
                   </div>
                 </div>
 
+                {isRequestAccess && (
+                  <div>
+                    <label className="contact-label" htmlFor="contact-organization">
+                      Organization <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}>(optional)</span>
+                    </label>
+                    <input
+                      id="contact-organization"
+                      className="contact-input"
+                      type="text"
+                      value={organization}
+                      onChange={e => setOrganization(e.target.value)}
+                      placeholder="Practice, studio, or institution"
+                      autoComplete="organization"
+                      maxLength={200}
+                    />
+                  </div>
+                )}
+
                 <div>
                   <label className="contact-label" htmlFor="contact-message">Message</label>
                   <textarea
@@ -161,7 +208,7 @@ export default function ContactModal({ onClose }: ContactModalProps) {
                     className="contact-input contact-textarea"
                     value={message}
                     onChange={e => setMessage(e.target.value)}
-                    placeholder="What's on your mind?"
+                    placeholder={config.messagePlaceholder}
                     required
                     maxLength={4000}
                     rows={5}
@@ -216,7 +263,7 @@ export default function ContactModal({ onClose }: ContactModalProps) {
                   {status === 'sending' ? (
                     <>Sending<span className="contact-spinner" /></>
                   ) : (
-                    <><Send size={11} /> Send message</>
+                    <><Send size={11} /> {isRequestAccess ? 'Send request' : 'Send message'}</>
                   )}
                 </button>
               </motion.form>

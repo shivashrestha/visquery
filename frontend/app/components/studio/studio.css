@@ -1028,12 +1028,20 @@
   margin: 16px 0 0;
   text-align: center;
 }
-.vqs-login-foot a {
+.vqs-login-foot a,
+.vqs-login-foot-link {
   color: var(--vqs-accent);
   font-weight: 600;
   text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
 }
-.vqs-login-foot a:hover { text-decoration: underline; }
+.vqs-login-foot a:hover,
+.vqs-login-foot-link:hover { text-decoration: underline; }
 .vqs-error-box {
   display: flex;
   align-items: center;
