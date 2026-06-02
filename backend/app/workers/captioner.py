@@ -68,13 +68,16 @@ def _optimize_for_vlm(image_bytes: bytes) -> bytes:
         quality -= 10
 
 
+_GATE_PROMPT = """Does this image contain a building, structure, or any architectural element (interior, exterior, urban space, bridge, monument)?
+Reply with exactly one word: YES or NO."""
+
 _ARTIFACT_PROMPT = """Analyze this architectural image and extract structured artifacts as JSON.
 
 Return exactly this JSON shape (no extra keys, no markdown):
 {
   "title": "one concise sentence — style, program, key feature (under 15 words)",
   "description": "2-3 sentences: building character, notable visual qualities, architectural intent",
-  "building_type": "<residential|cultural|religious|commercial|civic|institutional|industrial|infrastructure|landscape>",
+  "building_type": "<residential|cultural|religious|commercial|civic|institutional|industrial|infrastructure|landscape|not_applicable>",
   "style": {
     "primary": "<style_label>",
     "secondary": [],
@@ -135,18 +138,18 @@ Rules:
 - materials: flat list of primary material names (e.g. reinforced_concrete, glass_curtain_wall)
 - retrieval_tags: 5-10 concise tags optimized for semantic search and discovery
 - relationships: only when a structural dependency is clearly visible
+- If the image does NOT contain a building or architectural element (e.g. animals, people, nature, food), set building_type to "not_applicable", leave style/architectural_elements/materials/spatial_features empty arrays, set confidence to 0.0, and set title/description to empty strings
 - Output valid JSON only
 """
 
 
-def _run_vlm_extraction(
-    image_b64: str,
-    settings: Any,
-    image_vec: Optional[np.ndarray],
-    enrich_style: bool,
-) -> dict[str, Any]:
-    local_mode: bool = getattr(settings, "local_mode", False)
+_CLIP_STYLE_MIN_SCORE = 0.20  # cosine sim floor — below this, style is noise
+_ARTIFACT_CONFIDENCE_MIN = 0.15  # VLM confidence below this → treat as not_applicable
 
+
+def _build_client(settings: Any) -> tuple["Client", str, bool]:
+    """Return (client, model, is_local)."""
+    local_mode: bool = getattr(settings, "local_mode", False)
     if local_mode:
         base_url = getattr(settings, "local_ollama_base_url", "http://localhost:11434") or "http://localhost:11434"
         model = getattr(settings, "local_model_name", "") or "gemma4:e4b"
@@ -160,6 +163,40 @@ def _run_vlm_extraction(
         model = settings.ollama_vlm_model
         client = Client(host=base_url, headers=headers)
         logger.info("vlm_cloud_mode", model=model, base_url=base_url)
+    return client, model, local_mode
+
+
+def _is_architecture_image(client: "Client", model: str, image_b64: str) -> bool:
+    """Fast pre-check: does this image contain architectural content?"""
+    try:
+        t0 = time.monotonic()
+        resp = client.chat(
+            model=model,
+            messages=[{"role": "user", "content": _GATE_PROMPT, "images": [image_b64]}],
+            options={"temperature": 0.0, "num_predict": 4, "num_ctx": 1024, "think": False},
+        )
+        answer = (resp.message.content or "").strip().upper()
+        elapsed = round(time.monotonic() - t0, 2)
+        is_arch = answer.startswith("YES")
+        logger.info("vlm_gate_result", answer=answer, is_architecture=is_arch, elapsed_s=elapsed)
+        return is_arch
+    except Exception as exc:
+        logger.warning("vlm_gate_failed_assuming_architecture", error=str(exc))
+        return True  # fail open: run full extraction rather than silently drop
+
+
+def _run_vlm_extraction(
+    image_b64: str,
+    settings: Any,
+    image_vec: Optional[np.ndarray],
+    enrich_style: bool,
+) -> dict[str, Any]:
+    client, model, local_mode = _build_client(settings)
+
+    # ── Subject gate: skip full extraction for non-architecture images ──
+    if not _is_architecture_image(client, model, image_b64):
+        logger.info("vlm_gate_rejected_non_architecture")
+        return {**_EMPTY, "building_type": "not_applicable", "subject_valid": False}
 
     try:
         t0 = time.monotonic()
@@ -190,13 +227,22 @@ def _run_vlm_extraction(
         logger.warning("vlm_chat_failed_using_clip_fallback", error=str(vlm_exc))
         result = {**_EMPTY, "vlm_unavailable": True}
 
-    # Enrich style with CLIP zero-shot classification when vec is available
-    if enrich_style and image_vec is not None:
+    # ── CLIP style enrichment: only for confirmed architecture with adequate confidence ──
+    building_type = result.get("building_type", "")
+    vlm_confidence = float(result.get("style", {}).get("confidence", 0.0) if isinstance(result.get("style"), dict) else 0.0)
+    is_valid_architecture = (
+        building_type
+        and building_type != "not_applicable"
+        and vlm_confidence >= _ARTIFACT_CONFIDENCE_MIN
+    )
+
+    if enrich_style and image_vec is not None and is_valid_architecture:
         try:
             style_vecs = _get_style_vecs()
             scores = (style_vecs @ image_vec).tolist()
             ranked = sorted(zip(_ARCHITECTURE_STYLES, scores), key=lambda x: x[1], reverse=True)
-            top = [[s, round(float(sc), 4)] for s, sc in ranked[:3]]
+            # Only assign style if cosine similarity clears minimum threshold
+            top = [[s, round(float(sc), 4)] for s, sc in ranked[:3] if sc >= _CLIP_STYLE_MIN_SCORE]
             if top:
                 if not isinstance(result.get("style"), dict):
                     result["style"] = {}

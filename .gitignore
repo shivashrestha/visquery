@@ -87,3 +87,5 @@ raw_scrapped_data/*
 ml/test-api.ipynb
 storage/tmp/
 raw_scrapped_data_1
+visquery-studio
+docs/STUDIO_STRATEGY.md

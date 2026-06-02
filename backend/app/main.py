@@ -19,7 +19,7 @@ from prometheus_client import (
 )
 
 from app.config import get_settings
-from app.routers import admin, images, search, contact
+from app.routers import admin, images, search, contact, sources
 
 structlog.configure(
     processors=[
@@ -146,6 +146,7 @@ def create_app() -> FastAPI:
     app.include_router(images.router, prefix="/api")
     app.include_router(admin.router, prefix="/api", dependencies=[Depends(_verify_admin)])
     app.include_router(contact.router, prefix="/api")
+    app.include_router(sources.router, prefix="/api")
 
     @app.get("/health")
     async def health() -> dict:

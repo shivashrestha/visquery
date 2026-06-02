@@ -1,39 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const CLIENTS = [
-  {
-    email: process.env.STUDIO_CLIENT_1_EMAIL,
-    password: process.env.STUDIO_CLIENT_1_PASSWORD,
-    name: process.env.STUDIO_CLIENT_1_NAME ?? 'Client 1',
-    role: 'architect',
-    plan: 'studio',
-  },
-  {
-    email: process.env.STUDIO_CLIENT_2_EMAIL,
-    password: process.env.STUDIO_CLIENT_2_PASSWORD,
-    name: process.env.STUDIO_CLIENT_2_NAME ?? 'Client 2',
-    role: 'designer',
-    plan: 'studio',
-  },
-];
+import { findAndVerify, getClients } from '@/lib/studio-clients';
+import { issueStudioToken, studioCookieOptions } from '@/lib/studio-auth';
 
 export async function POST(req: NextRequest) {
-  const { email, password } = await req.json();
+  const { email, password } = await req.json().catch(() => ({}));
 
   if (!email || !password) {
     return NextResponse.json({ error: 'Email and password required.' }, { status: 400 });
   }
 
-  const match = CLIENTS.find(
-    (c) => c.email === email.trim().toLowerCase() && c.password === password,
-  );
+  if (getClients().length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          'Studio auth not configured. Set STUDIO_CLIENT_1_EMAIL / STUDIO_CLIENT_1_PASSWORD in .env.local and restart the dev server.',
+      },
+      { status: 503 },
+    );
+  }
 
-  if (!match) {
+  const client = await findAndVerify(email, password);
+  if (!client) {
     return NextResponse.json({ error: 'Invalid credentials.' }, { status: 401 });
   }
 
-  return NextResponse.json({
-    success: true,
-    user: { name: match.name, email: match.email, role: match.role, plan: match.plan },
+  const token = issueStudioToken({
+    sub: client.email,
+    name: client.name,
+    role: client.role,
+    plan: client.plan,
   });
+
+  const res = NextResponse.json({
+    success: true,
+    user: { name: client.name, email: client.email, role: client.role, plan: client.plan },
+  });
+  const opts = studioCookieOptions();
+  res.cookies.set(opts.name, token, {
+    httpOnly: opts.httpOnly,
+    secure: opts.secure,
+    sameSite: opts.sameSite,
+    path: opts.path,
+    maxAge: opts.maxAge,
+  });
+  return res;
 }
