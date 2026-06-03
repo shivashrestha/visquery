@@ -336,8 +336,16 @@ export default function HomePage() {
   const [ticker2Styles, setTicker2Styles] = useState<string[]>([]);
 
   useEffect(() => {
-    const shuffled = [...architectureStyles].sort(() => Math.random() - 0.5);
-    setExampleQueries(shuffled.slice(0, 10).map((s) => ({ text: s, style: shortStyleTag(s) })));
+    const fixed = [
+      'Modernism',
+      'Neoclassical',
+      'Baroque',
+      'Beaux-Arts',
+      'Contemporary',
+      'Art Deco',
+      'Brutalism',
+    ];
+    setExampleQueries(fixed.map((s) => ({ text: s, style: shortStyleTag(s) })));
     setTicker2Styles([...architectureStyles].sort(() => Math.random() - 0.5));
   }, []);
 

@@ -45,7 +45,7 @@ function loadClients(): StudioClient[] {
 
 let _clientsCache: StudioClient[] | null = null;
 export function getClients(): StudioClient[] {
-  if (_clientsCache === null) _clientsCache = loadClients();
+  if (_clientsCache === null || _clientsCache.length === 0) _clientsCache = loadClients();
   return _clientsCache;
 }
 
