@@ -125,7 +125,6 @@ export default function ResultsView({
             <div className="img-ref-body">
               <p className="img-ref-label">Uploaded Reference</p>
               <p className="img-ref-heading">Visual Similarity Search</p>
-              <p className="img-ref-sub">Showing results at 85% similarity threshold</p>
             </div>
           </div>
         )}
