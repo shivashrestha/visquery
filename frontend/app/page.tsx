@@ -297,6 +297,108 @@ function EpochStrip({ onSearch }: { onSearch: (q: string) => void }) {
 }
 
 
+// ── Try It Out Section — image drop zone on landing ────
+function TryItOutSection({
+  onImageSearch,
+  error,
+}: {
+  onImageSearch: (file: File) => void;
+  error: string | null;
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const processFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    onImageSearch(file);
+  };
+
+  return (
+    <section className="tryout-section">
+      <div
+        className={`tryout-dropzone${isDragging ? ' dragging' : ''}`}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+          const file = e.dataTransfer.files[0];
+          if (file) processFile(file);
+        }}
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <div className="tryout-corner tryout-corner-tl" />
+        <div className="tryout-corner tryout-corner-tr" />
+        <div className="tryout-corner tryout-corner-bl" />
+        <div className="tryout-corner tryout-corner-br" />
+
+        <div className="tryout-dz-inner">
+          {/* eyebrow */}
+          <span className="tryout-eyebrow">Try Visquery · Visual Intelligence</span>
+
+          {/* camera+ icon */}
+          <svg className="tryout-icon" width="52" height="52" viewBox="0 0 52 52" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M48 41a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V19a4 4 0 0 1 4-4h6l4-7h12l4 7h6a4 4 0 0 1 4 4z"/>
+            <circle cx="26" cy="29" r="9"/>
+            <line x1="40" y1="11" x2="40" y2="18"/>
+            <line x1="36.5" y1="14.5" x2="43.5" y2="14.5"/>
+          </svg>
+
+          <p className="tryout-dz-title">Drop an architectural image to begin</p>
+          <p className="tryout-dz-sub">
+            Visquery scans the image, extracts style + artifacts,<br />
+            and finds similar precedents from the atlas
+          </p>
+
+          {/* flow steps */}
+          <div className="tryout-steps">
+            <div className="tryout-step">
+              <span className="tryout-step-num">01</span>
+              <span className="tryout-step-label">Upload</span>
+            </div>
+            <span className="tryout-step-arrow">→</span>
+            <div className="tryout-step">
+              <span className="tryout-step-num">02</span>
+              <span className="tryout-step-label">Scan &amp; Classify</span>
+            </div>
+            <span className="tryout-step-arrow">→</span>
+            <div className="tryout-step">
+              <span className="tryout-step-num">03</span>
+              <span className="tryout-step-label">Discover Precedents</span>
+            </div>
+          </div>
+
+          <button
+            className="tryout-file-btn"
+            onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+          >
+            Select Local File
+          </button>
+
+          {error && (
+            <div className="tryout-error">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              {error}
+            </div>
+          )}
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) processFile(file);
+            e.target.value = '';
+          }}
+        />
+      </div>
+    </section>
+  );
+}
+
 type AppView =
   | { name: 'home' }
   | { name: 'results' }
@@ -328,8 +430,10 @@ export default function HomePage() {
     if (v === 'collections') return { name: 'collections' };
     return { name: 'home' };
   });
+  const [imageSearchUploadUrl, setImageSearchUploadUrl] = useState<string | null>(null);
   const [uploadAnalyzing, setUploadAnalyzing] = useState(false);
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null);
+  const [tryoutError, setTryoutError] = useState<string | null>(null);
   const [theme, setTheme] = useState<'monograph' | 'dark'>('monograph');
 
   const [exampleQueries, setExampleQueries] = useState<{ text: string; style: string }[]>([]);
@@ -409,23 +513,35 @@ export default function HomePage() {
   const blobUrlRef = useRef<string | null>(null);
 
   const handleSearch = useCallback((q: string) => {
+    setImageSearchUploadUrl(null);
     submit(q);
     setView({ name: 'results' });
   }, [submit]);
 
+  // SearchBar image upload — CLIP similarity only, shows ResultsView
   const handleImageSearch = useCallback(async (file: File) => {
     if (blobUrlRef.current) {
       URL.revokeObjectURL(blobUrlRef.current);
       blobUrlRef.current = null;
     }
+    const blobUrl = URL.createObjectURL(file);
+    blobUrlRef.current = blobUrl;
+    setImageSearchUploadUrl(blobUrl);
+    await submitByImage(file);
+    setView({ name: 'results' });
+  }, [submitByImage]);
 
-    // Show full-screen scanner immediately with the uploaded image
+  // TryItOut section — full flow: scan animation + VLM artifacts + RAG detail
+  const handleImageSearchFull = useCallback(async (file: File) => {
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
     const blobUrl = URL.createObjectURL(file);
     blobUrlRef.current = blobUrl;
     setUploadPreviewUrl(blobUrl);
     setUploadAnalyzing(true);
 
-    // CLIP search (fast) + ephemeral VLM analysis (slow) — nothing stored on server
     const analysisPromise = analyzeEphemeral(file).catch((err) => {
       console.error('[Ephemeral analysis failed]', err);
       return null;
@@ -436,30 +552,33 @@ export default function HomePage() {
 
     try {
       const analysis = await analysisPromise;
-
+      if (!analysis) {
+        setTryoutError('No architectural features detected. Please try a clearer photograph of a building or structure.');
+        setTimeout(() => setTryoutError(null), 6000);
+        return;
+      }
       const uploadedItem: SearchResultItem = {
         building_id: null,
         image_id: `ephemeral-${Date.now()}`,
         score: 1.0,
         metadata: {
-          description: analysis?.description,
-          typology: analysis?.building_type ? [analysis.building_type] : undefined,
-          materials: analysis?.materials ?? undefined,
-          structural_system: analysis?.architectural_elements?.structural?.[0] ?? undefined,
-          climate_zone: analysis?.environment?.climate_indicators?.[0] ?? undefined,
+          description: analysis.description,
+          typology: analysis.building_type ? [analysis.building_type] : undefined,
+          materials: analysis.materials ?? undefined,
+          structural_system: analysis.architectural_elements?.structural?.[0] ?? undefined,
+          climate_zone: analysis.environment?.climate_indicators?.[0] ?? undefined,
         },
         source: { url: '', license: 'unknown' },
         image_url: blobUrl,
-        image_metadata: analysis ? {
+        image_metadata: {
           title: analysis.title ?? '',
           description: analysis.description ?? '',
           architecture_style_classified: analysis.architecture_style_classified ?? '',
           architecture_style_top: analysis.architecture_style_top ?? [],
-        } : {},
-        tags: analysis?.architecture_style_classified ? [analysis.architecture_style_classified] : [],
-        ephemeral_artifacts: analysis ?? undefined,
+        },
+        tags: analysis.architecture_style_classified ? [analysis.architecture_style_classified] : [],
+        ephemeral_artifacts: analysis,
       };
-
       setView({ name: 'detail', item: uploadedItem, from: 'results' });
     } finally {
       setUploadAnalyzing(false);
@@ -489,6 +608,11 @@ export default function HomePage() {
   const handleNav = useCallback((name: ViewName) => {
     if (name === 'home') {
       clearSearch();
+      setImageSearchUploadUrl(null);
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
       setView({ name: 'home' });
     } else if (name === 'results') {
       setView({ name: 'results' });
@@ -592,6 +716,9 @@ export default function HomePage() {
               </div>
             </div>
 
+            {/* Try It Out — full VLM + artifacts flow */}
+            <TryItOutSection onImageSearch={handleImageSearchFull} error={tryoutError} />
+
             {/* Ticker — shuffled styles, client-only to avoid hydration mismatch */}
             {ticker2Styles.length > 0 && (
               <motion.div
@@ -658,6 +785,7 @@ export default function HomePage() {
               queryTerms={queryTerms}
               hasMore={results ? allResults.length > 0 && allResults.length % 30 === 0 : false}
               onLoadMore={loadMore}
+              uploadedImageUrl={imageSearchUploadUrl}
             />
           </motion.div>
         )}
@@ -735,7 +863,7 @@ export default function HomePage() {
         )}
       </AnimatePresence>
 
-      {/* ── Analyzing overlay ── */}
+      {/* ── Analyzing overlay — scanner design ── */}
       <AnimatePresence>
         {uploadAnalyzing && (
           <motion.div
@@ -752,7 +880,6 @@ export default function HomePage() {
               exit={{ opacity: 0, y: 10, scale: 0.97 }}
               transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1] }}
             >
-              {/* Scanner frame with uploaded image */}
               {uploadPreviewUrl && (
                 <div className="scan-frame">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
