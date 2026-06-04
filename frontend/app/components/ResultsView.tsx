@@ -29,6 +29,7 @@ interface ResultsViewProps {
   queryTerms?: string[];
   hasMore?: boolean;
   onLoadMore?: () => void;
+  uploadedImageUrl?: string | null;
 }
 
 function SkeletonGrid() {
@@ -65,6 +66,7 @@ export default function ResultsView({
   queryTerms = [],
   hasMore = false,
   onLoadMore,
+  uploadedImageUrl,
 }: ResultsViewProps) {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
@@ -115,11 +117,24 @@ export default function ResultsView({
           </div>
         )}
 
+        {/* Uploaded reference image panel */}
+        {uploadedImageUrl && (
+          <div className="img-ref-panel">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={uploadedImageUrl} alt="Reference" className="img-ref-thumb" />
+            <div className="img-ref-body">
+              <p className="img-ref-label">Uploaded Reference</p>
+              <p className="img-ref-heading">Visual Similarity Search</p>
+              <p className="img-ref-sub">Showing results at 85% similarity threshold</p>
+            </div>
+          </div>
+        )}
+
         {/* Results bar */}
         <div className="results-bar">
           <div className="query-echo">
-            <div className="lbl">{title ? 'View' : 'Semantic results for'}</div>
-            <p className="q">{title ?? `"${committed}"`}</p>
+            <div className="lbl">{title ? 'View' : uploadedImageUrl ? 'Image search' : 'Semantic results for'}</div>
+            <p className="q">{title ?? (uploadedImageUrl ? 'Similar precedents' : `"${committed}"`)}</p>
             {subtitle && (
               <p style={{ margin: '4px 0 0', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-muted)' }}>
                 {subtitle}
