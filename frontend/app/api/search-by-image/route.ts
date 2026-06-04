@@ -5,7 +5,7 @@ const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:18001';
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const res = await fetch(`${BACKEND_URL}/api/search/by-image?score_threshold=0.70`, {
+    const res = await fetch(`${BACKEND_URL}/api/search/by-image?score_threshold=0.50`, {
       method: 'POST',
       body: formData,
     });

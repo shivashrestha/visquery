@@ -24,6 +24,8 @@ class CorpusStats(BaseModel):
     image_count: int
     embedding_version: str
     last_ingest_at: Optional[str] = None
+    clip_index_size: int = 0
+    text_index_size: int = 0
 
 
 @router.get("/admin/stats", response_model=CorpusStats)
@@ -31,13 +33,28 @@ def get_stats(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> CorpusStats:
+    from app.services.vector_store import get_clip_store, get_text_store
+
     image_count = db.query(func.count(Image.id)).scalar() or 0
     latest = db.query(func.max(Image.created_at)).scalar()
     last_ingest_at = latest.isoformat() if latest else None
+
+    try:
+        clip_index_size = get_clip_store(settings.embedding_version, settings.faiss_data_dir).size
+    except Exception:
+        clip_index_size = -1
+
+    try:
+        text_index_size = get_text_store(settings.faiss_data_dir).size
+    except Exception:
+        text_index_size = -1
+
     return CorpusStats(
         image_count=image_count,
         embedding_version=settings.embedding_version,
         last_ingest_at=last_ingest_at,
+        clip_index_size=clip_index_size,
+        text_index_size=text_index_size,
     )
 
 

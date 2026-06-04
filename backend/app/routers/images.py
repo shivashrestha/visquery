@@ -360,21 +360,33 @@ async def search_by_image(
 
     # 2. CLIP similarity search
     clip_store = get_clip_store(settings.embedding_version, settings.faiss_data_dir)
+    logger.info(
+        "clip_store_status",
+        ntotal=clip_store.size,
+        version=settings.embedding_version,
+        data_dir=settings.faiss_data_dir,
+    )
     ids, scores = clip_store.search(vec, settings.top_k_retrieve)
+    logger.info(
+        "clip_search_raw",
+        ids_count=len(ids),
+        top5_scores=[round(s, 4) for s in scores[:5]] if scores else [],
+        threshold=score_threshold,
+    )
 
     pairs = [(iid, s) for iid, s in zip(ids, scores) if s >= score_threshold]
+    logger.info("clip_pairs_after_threshold", count=len(pairs))
     final_ids = [iid for iid, _ in pairs[: settings.top_k_final]]
     score_map = {iid: s for iid, s in pairs}
 
     meta_map = _fetch_result_metadata(final_ids, db)
+    logger.info("meta_map_fetched", requested=len(final_ids), found=len(meta_map))
 
     results = []
     for iid in final_ids:
         img = meta_map.get(iid)
         if img is None:
-            continue
-        resolved = _resolve_storage_path(img.storage_path, settings)
-        if not Path(resolved).exists():
+            logger.warning("search_by_image_missing_db_record", image_id=iid)
             continue
         results.append({
             "building_id": None,
@@ -392,6 +404,7 @@ async def search_by_image(
             "artifacts_json": img.artifacts_json or None,
             "tags": img.tags or [],
         })
+    logger.info("search_by_image_complete", results_count=len(results))
 
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
     return {"results": results, "latency_ms": {"total": elapsed_ms}}
