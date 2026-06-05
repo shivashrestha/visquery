@@ -139,6 +139,34 @@
         limits:
           memory: 1500M
 
+  embed-clip:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "/scripts/generate_clip_embeddings.py"]
+    env_file:
+      - ${DOCKER_ENV_FILE:-.env}
+    environment:
+      HF_HOME: /opt/hf-cache
+      HF_HUB_OFFLINE: "1"
+      STORAGE_ROOT: /data
+      FAISS_DATA_DIR: /data/vectors
+      EMBEDDING_VERSION: "2"
+      CLIP_CHECKPOINT_PATH: /data/checkpoints/best_clip_v2.pt
+    volumes:
+      - ${STORAGE_HOST_PATH:-./storage}:/data
+      - ./storage/data/checkpoints:/data/checkpoints:ro
+      - ./ingestion/scripts:/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["embed-clip"]
+    deploy:
+      resources:
+        limits:
+          memory: 1500M
+
   postgres:
     image: postgres:16-alpine
     environment:
