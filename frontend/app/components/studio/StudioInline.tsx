@@ -10,6 +10,7 @@ import SearchBar from '../SearchBar';
 import ResultsView from '../ResultsView';
 import LibraryView from '../LibraryView';
 import DetailView from '../DetailView';
+import Header, { type ViewName } from '../Header';
 
 import StudioSidebar, { type StudioNavItem, type StudioSection } from './StudioSidebar';
 import StudioOverview from './StudioOverview';
@@ -229,7 +230,12 @@ function Shell({ user, onLogout }: { user: StudioUser; onLogout: () => void }) {
 
         {currentSection === 'library' && (
           <div className="vqs-host">
-            <LibraryView onOpen={handleOpen} favs={favs} onFav={toggleFav} />
+            <LibraryView
+              onOpen={handleOpen}
+              favs={favs}
+              onFav={toggleFav}
+              apiEndpoint="/api/studio/images"
+            />
           </div>
         )}
 
@@ -291,6 +297,21 @@ export default function StudioInline() {
       </div>
     );
   }
-  if (!user) return <StudioLanding onLogin={setUser} />;
+  if (!user) {
+    const handleNav = (v: ViewName) => {
+      if (v === 'home') window.location.href = '/';
+      else if (v === 'library') window.location.href = '/?view=library';
+      else if (v === 'collections') window.location.href = '/?view=collections';
+      else if (v === 'results') window.location.href = '/';
+    };
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <Header view="studio" onNav={handleNav} />
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+          <StudioLanding onLogin={setUser} />
+        </div>
+      </div>
+    );
+  }
   return <Shell user={user} onLogout={handleLogout} />;
 }

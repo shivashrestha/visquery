@@ -81,4 +81,7 @@ DROP TABLE IF EXISTS sources   CASCADE;
 -- ── 7. Add artifacts_json column (V2 artifact engine) ───────────────────────
 ALTER TABLE images ADD COLUMN IF NOT EXISTS artifacts_json JSONB;
 
+-- ── 8. Add owner column (per-user studio isolation) ─────────────────────────
+ALTER TABLE images ADD COLUMN IF NOT EXISTS owner TEXT;
+
 COMMIT;

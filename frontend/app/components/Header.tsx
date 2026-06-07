@@ -48,12 +48,12 @@ export default function Header({ view, onNav, resultCount, theme, onToggleTheme 
             >
               Collections
             </button>
-            <button
-              className={view === 'studio' ? 'is-active' : ''}
-              onClick={() => handleNav('studio')}
+            <a
+              href="/studio"
+              className="hdr-nav-link"
             >
               Studio
-            </button>
+            </a>
           </nav>
         </div>
         <div className="hdr-right">
@@ -103,12 +103,9 @@ export default function Header({ view, onNav, resultCount, theme, onToggleTheme 
           >
             Collections
           </button>
-          <button
-            className={view === 'studio' ? 'is-active' : ''}
-            onClick={() => handleNav('studio')}
-          >
+          <a href="/studio" className="hdr-nav-link">
             Studio
-          </button>
+          </a>
         </nav>
       )}
     </>

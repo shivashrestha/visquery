@@ -66,6 +66,15 @@ class VectorStore:
             self._id_map.extend(image_ids)
             self._persist()
 
+    def get_vector(self, image_id: str) -> "np.ndarray | None":
+        """Return the stored vector for image_id, or None if not indexed."""
+        try:
+            pos = self._id_map.index(image_id)
+        except ValueError:
+            return None
+        with self._lock:
+            return self._index.reconstruct(pos)
+
     def search(self, query: np.ndarray, k: int) -> tuple[list[str], list[float]]:
         """Return (image_ids, scores) for the top-k nearest neighbors."""
         if query.ndim == 1:
