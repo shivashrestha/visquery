@@ -631,36 +631,29 @@ export default function HomePage() {
 
   const [relatedItems, setRelatedItems] = useState<SearchResultItem[]>([]);
 
+  const detailItem = view.name === 'detail' ? view.item : null;
+  const detailImageId = detailItem?.image_id ?? null;
+
   useEffect(() => {
-    if (view.name !== 'detail') { setRelatedItems([]); return; }
-    const { item } = view;
+    if (!detailItem || !detailImageId) { setRelatedItems([]); return; }
 
     // Ephemeral images not in CLIP index — fall back to text-search results
-    if (item.ephemeral_artifacts !== undefined || item.image_id.startsWith('ephemeral-')) {
-      setRelatedItems(allResults.filter((r) => r.image_id !== item.image_id).slice(0, 6));
+    if (detailItem.ephemeral_artifacts !== undefined || detailImageId.startsWith('ephemeral-')) {
+      setRelatedItems(
+        (results?.results ?? []).filter((r) => r.image_id !== detailImageId).slice(0, 6),
+      );
       return;
     }
 
     let cancelled = false;
-    getSimilarImages(item.image_id, 6)
+    getSimilarImages(detailImageId, 6)
       .then((resp) => { if (!cancelled) setRelatedItems(resp.results); })
       .catch(() => {
-        // Fallback to metadata-based if CLIP lookup fails
-        if (!cancelled) {
-          setRelatedItems(
-            allResults
-              .filter(
-                (r) =>
-                  r.image_id !== item.image_id &&
-                  (r.metadata.typology?.some((t) => item.metadata.typology?.includes(t)) ||
-                    r.metadata.materials?.some((m) => item.metadata.materials?.includes(m))),
-              )
-              .slice(0, 6),
-          );
-        }
+        if (!cancelled) setRelatedItems([]);
       });
     return () => { cancelled = true; };
-  }, [view, allResults]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailImageId]);
 
   const viewName: ViewName =
     view.name === 'detail' ? view.from : (view.name as ViewName);

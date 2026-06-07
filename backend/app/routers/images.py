@@ -422,7 +422,7 @@ async def search_by_image(
 async def get_similar_images(
     image_id: uuid.UUID,
     k: int = 6,
-    score_threshold: float = 0.80,
+    score_threshold: float = 0.70,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict:
