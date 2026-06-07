@@ -65,6 +65,14 @@ export default function RowCard({
             .filter(Boolean)
             .join(' · ')}
         </div>
+        {(() => {
+          const desc = metadata.description || result.explanation;
+          return desc ? (
+            <p className="card-desc" style={{ marginTop: 4 }}>
+              {desc.length > 140 ? desc.slice(0, 140).trimEnd() + '…' : desc}
+            </p>
+          ) : null;
+        })()}
         <div className="card-tags" style={{ marginTop: '8px' }}>
           {(result.tags ?? []).slice(0, 6).map((t) => (
             <span

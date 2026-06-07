@@ -149,18 +149,23 @@ export default function BuildingCard({
         </p>
       )}
 
-      {!compact && (explanation || (result.tags && result.tags.length > 0)) && (
+      {!compact && (() => {
+        const desc = metadata.description || explanation;
+        return desc ? (
+          <p className="card-desc">{desc.length > 120 ? desc.slice(0, 120).trimEnd() + '…' : desc}</p>
+        ) : null;
+      })()}
+
+      {!compact && result.tags && result.tags.length > 0 && (
         <div className="card-tags">
-          {result.tags
-            ? result.tags.slice(0, 4).map((t) => (
-                <span
-                  key={t}
-                  className={`card-tag${matchTags.includes(t) ? ' match' : ''}`}
-                >
-                  {t}
-                </span>
-              ))
-            : null}
+          {result.tags.slice(0, 4).map((t) => (
+            <span
+              key={t}
+              className={`card-tag${matchTags.includes(t) ? ' match' : ''}`}
+            >
+              {t}
+            </span>
+          ))}
         </div>
       )}
     </motion.article>

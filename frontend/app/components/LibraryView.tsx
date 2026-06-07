@@ -61,6 +61,12 @@ function PinterestCard({ result, onClick, onFav, fav, index }: PinterestCardProp
             {metadata.year_built ? ` · ${metadata.year_built}` : ''}
           </p>
         )}
+        {(() => {
+          const desc = metadata.description || result.explanation;
+          return desc ? (
+            <p className="card-desc">{desc.length > 100 ? desc.slice(0, 100).trimEnd() + '…' : desc}</p>
+          ) : null;
+        })()}
         {result.tags && result.tags.length > 0 && (
           <div className="card-tags" style={{ marginTop: 4 }}>
             {result.tags.slice(0, 3).map((t) => (
