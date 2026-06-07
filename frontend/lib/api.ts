@@ -138,9 +138,10 @@ export async function listImages(
   skip = 0,
   limit = 40,
   sort: 'created_at_desc' | 'created_at_asc' | 'year_desc' | 'year_asc' = 'created_at_desc',
+  apiEndpoint = '/api/images',
 ): Promise<LibraryResponse> {
   const params = new URLSearchParams({ skip: String(skip), limit: String(limit), sort });
-  const res = await fetch(`/api/images?${params.toString()}`);
+  const res = await fetch(`${apiEndpoint}?${params.toString()}`);
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Library fetch failed (${res.status}): ${text}`);
@@ -195,6 +196,15 @@ export async function getFacets(): Promise<FacetsResponse> {
   const res = await fetch('/api/facets');
   if (!res.ok) throw new Error(`Facets failed (${res.status})`);
   return res.json() as Promise<FacetsResponse>;
+}
+
+export async function getSimilarImages(imageId: string, k = 6): Promise<SearchResponse> {
+  const res = await fetch(`/api/images/${imageId}/similar?k=${k}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Similar images failed (${res.status}): ${text}`);
+  }
+  return res.json() as Promise<SearchResponse>;
 }
 
 export async function chatImage(imageId: string, message: string): Promise<string> {

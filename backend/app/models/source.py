@@ -52,6 +52,7 @@ class Image(Base):
     ingest_status    = Column(Text, nullable=False, server_default=text("'embedded'"))
     metadata_ready   = Column(Boolean, nullable=False, server_default=text("false"))
     created_at       = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    owner            = Column(Text, nullable=True)   # studio user email; NULL = public/seeded
 
 
 class ImageRead(BaseModel):

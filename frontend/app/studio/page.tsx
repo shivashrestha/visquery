@@ -1,7 +1,7 @@
-import { redirect } from 'next/navigation';
+'use client';
 
-// Studio is rendered inline inside the main app shell (see app/page.tsx).
-// Keep this route for bookmarks/old links — redirect to the same SPA view.
-export default function StudioRoute() {
-  redirect('/?view=studio');
+import StudioInline from '../components/studio/StudioInline';
+
+export default function StudioPage() {
+  return <StudioInline />;
 }

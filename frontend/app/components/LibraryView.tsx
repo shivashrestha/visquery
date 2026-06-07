@@ -88,6 +88,7 @@ interface LibraryViewProps {
   onOpen: (item: SearchResultItem) => void;
   favs: Record<string, boolean>;
   onFav: (item: SearchResultItem) => void;
+  apiEndpoint?: string;
 }
 
 function SkeletonGrid() {
@@ -104,7 +105,7 @@ function SkeletonGrid() {
   );
 }
 
-export default function LibraryView({ onOpen, favs, onFav }: LibraryViewProps) {
+export default function LibraryView({ onOpen, favs, onFav, apiEndpoint = '/api/images' }: LibraryViewProps) {
   const [items, setItems] = useState<SearchResultItem[]>([]);
   const [total, setTotal] = useState(0);
   const [skip, setSkip] = useState(0);
@@ -134,7 +135,7 @@ export default function LibraryView({ onOpen, favs, onFav }: LibraryViewProps) {
     setError(null);
 
     try {
-      const data: LibraryResponse = await listImages(newSkip, PAGE_SIZE, newSort);
+      const data: LibraryResponse = await listImages(newSkip, PAGE_SIZE, newSort, apiEndpoint);
       setTotal(data.total);
       setItems(prev => replace ? data.results : [...prev, ...data.results]);
       setSkip(newSkip + data.results.length);

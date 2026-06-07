@@ -47,6 +47,7 @@ class EphemeralChatRequest(BaseModel):
 
 @router.post("/images/upload", response_model=UploadResponse)
 async def upload_image(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
@@ -65,6 +66,8 @@ async def upload_image(
     local_path = storage_root / f"{image_id}{ext}"
     local_path.write_bytes(content)
     sha256 = hashlib.sha256(content).hexdigest()
+
+    owner = request.headers.get("X-Studio-Owner") or None
 
     existing = db.query(Image).filter(Image.sha256 == sha256).first()
     if existing:
@@ -94,6 +97,7 @@ async def upload_image(
         metadata_ready=False,
         metadata_json={"filename": file.filename},
         tags=[],
+        owner=owner,
     )
     db.add(image)
     db.commit()
@@ -118,15 +122,19 @@ async def upload_image(
 
 @router.get("/images")
 async def list_images(
+    request: Request,
     skip: int = 0,
     limit: int = 40,
     sort: str = "created_at_desc",
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    """List all indexed images with pagination, shaped like search results."""
+    """List indexed images with pagination. Filters by owner when X-Studio-Owner header is present."""
     from app.workers.ingest_worker import _resolve_storage_path
+    owner = request.headers.get("X-Studio-Owner") or None
     q = db.query(Image)
+    if owner:
+        q = q.filter(Image.owner == owner)
     if sort == "created_at_desc":
         q = q.order_by(Image.created_at.desc())
     elif sort == "created_at_asc":
@@ -405,6 +413,65 @@ async def search_by_image(
             "tags": img.tags or [],
         })
     logger.info("search_by_image_complete", results_count=len(results))
+
+    elapsed_ms = int((time.perf_counter() - t0) * 1000)
+    return {"results": results, "latency_ms": {"total": elapsed_ms}}
+
+
+@router.get("/images/{image_id}/similar")
+async def get_similar_images(
+    image_id: uuid.UUID,
+    k: int = 6,
+    score_threshold: float = 0.80,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Return visually similar images via CLIP index vector lookup (no re-embedding)."""
+    import time
+    from app.services.retrieval import _fetch_result_metadata, _image_to_metadata
+
+    t0 = time.perf_counter()
+    clip_store = get_clip_store(settings.embedding_version, settings.faiss_data_dir)
+    vec = clip_store.get_vector(str(image_id))
+
+    if vec is None:
+        # Not yet indexed — return empty
+        return {"results": [], "latency_ms": {"total": 0}}
+
+    ids, scores = clip_store.search(vec, k + 1)  # +1 to drop self
+
+    pairs = [
+        (iid, s)
+        for iid, s in zip(ids, scores)
+        if iid != str(image_id) and s >= score_threshold
+    ][:k]
+
+    final_ids = [iid for iid, _ in pairs]
+    score_map = {iid: s for iid, s in pairs}
+
+    meta_map = _fetch_result_metadata(final_ids, db)
+
+    results = []
+    for iid in final_ids:
+        img = meta_map.get(iid)
+        if img is None:
+            continue
+        results.append({
+            "building_id": None,
+            "image_id": iid,
+            "score": round(score_map.get(iid, 0.0), 4),
+            "metadata": _image_to_metadata(img),
+            "source": {
+                "url": img.source_url,
+                "license": img.license,
+                "photographer": img.photographer,
+                "license_url": img.license_url,
+            },
+            "image_url": f"/images/{iid}/raw",
+            "image_metadata": img.metadata_json or {},
+            "artifacts_json": img.artifacts_json or None,
+            "tags": img.tags or [],
+        })
 
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
     return {"results": results, "latency_ms": {"total": elapsed_ms}}

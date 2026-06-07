@@ -12,10 +12,9 @@ import ResultsView from './components/ResultsView';
 import DetailView from './components/DetailView';
 import CollectionsView from './components/CollectionsView';
 import LibraryView from './components/LibraryView';
-import StudioInline from './components/studio/StudioInline';
 import { useSearch } from '@/lib/hooks';
 import type { SearchResultItem } from '@/lib/types';
-import { analyzeEphemeral } from '@/lib/api';
+import { analyzeEphemeral, getSimilarImages } from '@/lib/api';
 import architectureStyles from './architecture_styles.json';
 
 function shortStyleTag(style: string): string {
@@ -404,7 +403,6 @@ type AppView =
   | { name: 'results' }
   | { name: 'library' }
   | { name: 'collections' }
-  | { name: 'studio' }
   | { name: 'detail'; item: SearchResultItem; from: 'results' | 'library' | 'collections' };
 
 const heroVariants = {
@@ -425,7 +423,7 @@ export default function HomePage() {
     if (typeof window === 'undefined') return { name: 'home' };
     const params = new URLSearchParams(window.location.search);
     const v = params.get('view');
-    if (v === 'studio') return { name: 'studio' };
+    if (v === 'studio') { window.location.replace('/studio'); return { name: 'home' }; }
     if (v === 'library') return { name: 'library' };
     if (v === 'collections') return { name: 'collections' };
     return { name: 'home' };
@@ -621,7 +619,7 @@ export default function HomePage() {
     } else if (name === 'collections') {
       setView({ name: 'collections' });
     } else if (name === 'studio') {
-      setView({ name: 'studio' });
+      window.location.href = '/studio';
     }
   }, [clearSearch]);
 
@@ -631,20 +629,37 @@ export default function HomePage() {
     .split(/[\s,]+/)
     .filter(Boolean);
 
-  const relatedItems = useMemo(() => {
-    if (view.name !== 'detail') return [];
+  const [relatedItems, setRelatedItems] = useState<SearchResultItem[]>([]);
+
+  useEffect(() => {
+    if (view.name !== 'detail') { setRelatedItems([]); return; }
     const { item } = view;
+
+    // Ephemeral images not in CLIP index — fall back to text-search results
     if (item.ephemeral_artifacts !== undefined || item.image_id.startsWith('ephemeral-')) {
-      return allResults.filter((r) => r.image_id !== item.image_id).slice(0, 6);
+      setRelatedItems(allResults.filter((r) => r.image_id !== item.image_id).slice(0, 6));
+      return;
     }
-    return allResults
-      .filter(
-        (r) =>
-          r.image_id !== item.image_id &&
-          (r.metadata.typology?.some((t) => item.metadata.typology?.includes(t)) ||
-            r.metadata.materials?.some((m) => item.metadata.materials?.includes(m))),
-      )
-      .slice(0, 6);
+
+    let cancelled = false;
+    getSimilarImages(item.image_id, 6)
+      .then((resp) => { if (!cancelled) setRelatedItems(resp.results); })
+      .catch(() => {
+        // Fallback to metadata-based if CLIP lookup fails
+        if (!cancelled) {
+          setRelatedItems(
+            allResults
+              .filter(
+                (r) =>
+                  r.image_id !== item.image_id &&
+                  (r.metadata.typology?.some((t) => item.metadata.typology?.includes(t)) ||
+                    r.metadata.materials?.some((m) => item.metadata.materials?.includes(m))),
+              )
+              .slice(0, 6),
+          );
+        }
+      });
+    return () => { cancelled = true; };
   }, [view, allResults]);
 
   const viewName: ViewName =
@@ -824,20 +839,6 @@ export default function HomePage() {
               favs={favs}
               onFav={toggleFav}
             />
-          </motion.div>
-        )}
-
-        {/* ── Studio ── */}
-        {view.name === 'studio' && (
-          <motion.div
-            key="studio"
-            style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.15 } }}
-            transition={{ duration: 0.25 }}
-          >
-            <StudioInline />
           </motion.div>
         )}
 

@@ -27,7 +27,10 @@ export async function forwardJson(req: NextRequest, backendPath: string): Promis
   try {
     const res = await fetch(`${BACKEND_URL}${backendPath}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Studio-Owner': gate.user.sub,
+      },
       body: JSON.stringify(body),
     });
     const raw = await res.text();
@@ -53,6 +56,7 @@ export async function forwardMultipart(req: NextRequest, backendPath: string): P
     }
     const res = await fetch(`${BACKEND_URL}${backendPath}`, {
       method: 'POST',
+      headers: { 'X-Studio-Owner': gate.user.sub },
       body: outboundForm,
     });
     const raw = await res.text();
