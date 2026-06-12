@@ -5046,6 +5046,7 @@
   position: fixed;
   inset: 0;
   z-index: 1300;
+  overscroll-behavior: contain;
   background: rgba(15, 23, 42, 0.55);
   backdrop-filter: blur(3px);
   display: flex;
@@ -5105,7 +5106,7 @@
 }
 .report-close:hover { color: var(--ink); }
 
-.report-body { flex: 1; overflow-y: auto; }
+.report-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
 
 .report-loading {
   display: flex;
@@ -5211,6 +5212,7 @@
 .report-prose p {
   font-size: 0.92rem;
   line-height: 1.75;
+  text-align: justify;
   color: var(--ink);
   margin: 12px 0;
 }
@@ -5218,6 +5220,7 @@
 .report-list li {
   font-size: 0.92rem;
   line-height: 1.7;
+  text-align: justify;
   color: var(--ink);
   margin: 4px 0;
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { FileText, X } from 'lucide-react';
 import type { ReportFocus } from '@/lib/api';
@@ -20,7 +21,9 @@ export default function ReportSelectBar({
   onGenerate,
   onCancel,
 }: ReportSelectBarProps) {
-  return (
+  // Portal to body — ancestor transforms (framer-motion) would otherwise
+  // re-anchor position:fixed and let the bar scroll out of view.
+  return createPortal(
     <motion.div
       className="report-select-bar"
       initial={{ opacity: 0, y: 24 }}
@@ -50,6 +53,7 @@ export default function ReportSelectBar({
       <button className="report-select-cancel" onClick={onCancel} aria-label="Cancel selection">
         <X size={13} />
       </button>
-    </motion.div>
+    </motion.div>,
+    document.body,
   );
 }
