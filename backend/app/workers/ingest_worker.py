@@ -131,6 +131,18 @@ def complete_image_metadata(image_id: str) -> dict[str, Any]:
         db.commit()
         log.info("pipeline_complete", image_id=image_id, title=title)
 
+    try:
+        from app.workers.tag_validator import enqueue_tag_validation
+        enqueue_tag_validation(settings, image_id)
+    except Exception as exc:
+        log.warning("tag_validation_enqueue_failed", error=str(exc))
+
+    try:
+        from app.workers.segment_indexer import enqueue_segment_indexing
+        enqueue_segment_indexing(settings, image_id)
+    except Exception as exc:
+        log.warning("segment_index_enqueue_failed", error=str(exc))
+
     return {"status": "ok", "image_id": image_id}
 
 
@@ -256,4 +268,17 @@ def ingest_image(
 
         db.commit()
         log.info("ingest_complete", image_id=str(image_id), title=title)
-        return {"status": "ok", "image_id": str(image_id)}
+
+    try:
+        from app.workers.tag_validator import enqueue_tag_validation
+        enqueue_tag_validation(settings, str(image_id))
+    except Exception as exc:
+        log.warning("tag_validation_enqueue_failed", error=str(exc))
+
+    try:
+        from app.workers.segment_indexer import enqueue_segment_indexing
+        enqueue_segment_indexing(settings, str(image_id))
+    except Exception as exc:
+        log.warning("segment_index_enqueue_failed", error=str(exc))
+
+    return {"status": "ok", "image_id": str(image_id)}

@@ -3,11 +3,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CachedImage from './CachedImage';
-import { ArrowLeft, Heart, MessageSquare, Info, Sparkles, Bot, Layers } from 'lucide-react';
+import { ArrowLeft, Heart, MessageSquare, Info, Sparkles, Bot, Layers, Search, Archive, ImageIcon, X, ChevronDown } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
+import type { SegmentObject, ArchiveStatus, ArchiveCitation } from '@/lib/api';
 import BuildingCard from './BuildingCard';
 import ArtifactsModal from './ArtifactsModal';
-import { chatImage, chatEphemeral } from '@/lib/api';
+import ToolsMenu, { type RightPanelMode } from './ToolsMenu';
+import SegmentPanel from './SegmentPanel';
+import ImageEditPanel from './ImageEditPanel';
+import { chatImage, chatEphemeral, chatArchive, getArchiveStatus } from '@/lib/api';
 
 interface DetailViewProps {
   item: SearchResultItem;
@@ -16,6 +20,13 @@ interface DetailViewProps {
   favs: Record<string, boolean>;
   onFav: (item: SearchResultItem) => void;
   onOpen: (item: SearchResultItem) => void;
+  /** Component-level search: triggered from segment chips / SegmentPanel. */
+  onSegmentSearch?: (seg: SegmentObject) => void;
+  /** Pre-computed segments (tryout flow) shown as clickable chips under the hero. */
+  segmentChips?: SegmentObject[];
+  /** Studio only: enables the "Answer from: This image / Archive" chat selector.
+   *  Public/tryout flows never set this — zero archive requests, zero UI change. */
+  archiveEnabled?: boolean;
 }
 
 const STARTER_QS = [
@@ -27,7 +38,13 @@ const STARTER_QS = [
   "Suitable for a dense urban site?",
 ];
 
-type ChatMsg = { who: 'user' | 'ai'; text: string };
+type ChatSource = 'image' | 'archive';
+type ChatMsg = {
+  who: 'user' | 'ai';
+  text: string;
+  source?: ChatSource;
+  citations?: ArchiveCitation[];
+};
 
 function renderBubble(text: string): React.ReactNode {
   // Strip stray markdown bold markers and render line breaks
@@ -105,10 +122,14 @@ export default function DetailView({
   favs,
   onFav,
   onOpen,
+  onSegmentSearch,
+  segmentChips,
+  archiveEnabled,
 }: DetailViewProps) {
   const [activeImg, setActiveImg] = useState(0);
   const [mobileTab, setMobileTab] = useState<'detail' | 'chat'>('detail');
   const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const [rightMode, setRightMode] = useState<RightPanelMode>('rag');
 
   // ── Resizable RAG panel ──────────────────────────────────────
   const MIN_RAG = 220;
@@ -194,10 +215,31 @@ export default function DetailView({
   const streamRef = useRef<HTMLDivElement>(null);
   const fav = !!favs[item.image_id];
 
+  // ── Ask the Archive (Studio only) ─────────────────────────────
+  const [archiveStatus, setArchiveStatus] = useState<ArchiveStatus | null>(null);
+  const [askSource, setAskSource] = useState<ChatSource>('image');
+  const [scopeIds, setScopeIds] = useState<string[]>([]); // empty = all documents
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [drawerCitation, setDrawerCitation] = useState<ArchiveCitation | null>(null);
+  const hasArchive = !!archiveEnabled && !!archiveStatus?.has_documents;
+  const readyDocs = (archiveStatus?.sources ?? []).filter(
+    (s) => s.index_status === 'ready' && s.chunk_count > 0,
+  );
+
+  useEffect(() => {
+    if (!archiveEnabled) return;
+    let cancelled = false;
+    getArchiveStatus().then((s) => { if (!cancelled && s) setArchiveStatus(s); });
+    return () => { cancelled = true; };
+  }, [archiveEnabled]);
+
   const thumbs = [item, ...related.slice(0, 4)];
 
   useEffect(() => {
     setMsgs([{ who: 'ai', text: initialAiText }]);
+    setAskSource('image');
+    setScopeOpen(false);
+    setDrawerCitation(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.image_id]);
 
@@ -208,20 +250,30 @@ export default function DetailView({
   }, [msgs, thinking]);
 
   const ask = useCallback(async (q: string) => {
-    setMsgs((m) => [...m, { who: 'user', text: q }]);
+    const source: ChatSource = hasArchive && askSource === 'archive' ? 'archive' : 'image';
+    setMsgs((m) => [...m, { who: 'user', text: q, source }]);
     setDraft('');
     setThinking(true);
     try {
-      const answer = item.ephemeral_artifacts
-        ? await chatEphemeral(item.ephemeral_artifacts, q)
-        : await chatImage(item.image_id, q);
-      setMsgs((m) => [...m, { who: 'ai', text: answer }]);
+      if (source === 'archive') {
+        const history = msgs
+          .filter((m) => m.source === 'archive' || m.who === 'user')
+          .map((m) => ({ who: m.who, text: m.text }));
+        const res = await chatArchive(q, history, scopeIds.length ? scopeIds : undefined);
+        setMsgs((m) => [...m, { who: 'ai', text: res.answer, source, citations: res.citations }]);
+      } else {
+        // Existing image chat path — untouched
+        const answer = item.ephemeral_artifacts
+          ? await chatEphemeral(item.ephemeral_artifacts, q)
+          : await chatImage(item.image_id, q);
+        setMsgs((m) => [...m, { who: 'ai', text: answer, source }]);
+      }
     } catch {
-      setMsgs((m) => [...m, { who: 'ai', text: 'Unable to answer right now.' }]);
+      setMsgs((m) => [...m, { who: 'ai', text: 'Unable to answer right now.', source }]);
     } finally {
       setThinking(false);
     }
-  }, [item.image_id, item.ephemeral_artifacts]);
+  }, [item.image_id, item.ephemeral_artifacts, hasArchive, askSource, scopeIds, msgs]);
 
   const locationStr = [item.metadata.location_city, item.metadata.location_country]
     .filter(Boolean).join(', ');
@@ -271,6 +323,26 @@ export default function DetailView({
           ))}
         </div>
 
+        {/* Detected components — tryout flow: photo → segment → similar in 2 clicks */}
+        {onSegmentSearch && (segmentChips?.length ?? 0) > 0 && (
+          <div className="detail-seg-chips">
+            <span className="detail-seg-chips-label">Detected components</span>
+            {segmentChips!.map((seg, i) => (
+              <button
+                key={seg.id}
+                className="seg-sim-chip"
+                onClick={() => onSegmentSearch(seg)}
+                title={`Find similar ${seg.class_name ?? `region ${i + 1}`}`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={seg.crop_data_url} alt="" className="seg-sim-chip-thumb" />
+                <Search size={10} />
+                {seg.class_name ?? `Region ${i + 1}`}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Title + actions */}
         <div className="detail-head">
           <div>
@@ -299,6 +371,7 @@ export default function DetailView({
             >
               <Layers size={12} /> Artifacts
             </motion.button>
+            <ToolsMenu activeMode={rightMode} onSelect={setRightMode} />
           </div>
         </div>
 
@@ -466,83 +539,207 @@ export default function DetailView({
         <div className="rag-resize-grip" />
       </div>
 
-      {/* RAG sidebar */}
+      {/* Right panel — switches between RAG chat / Segmentation / Image Edit */}
       <aside className={`rag${mobileTab === 'detail' ? '' : ' mobile-visible'}`}>
-        <div className="rag-head">
-          <div className="lbl">Ask about this image</div>
-          <h3>What would you like to know about{' '}
-            <em>{displayTitle || 'this building'}</em>?
-          </h3>
-        </div>
+        <AnimatePresence mode="wait" initial={false}>
 
-        <div className="rag-stream" ref={streamRef}>
-          <AnimatePresence initial={false}>
-            {msgs.map((m, i) => (
-              <motion.div
-                key={i}
-                className={`msg ${m.who}`}
-                initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1] }}
-              >
-                <span className={`who${m.who === 'ai' ? ' ai-who' : ''}`}>
-                  {m.who === 'ai' && <Sparkles size={9} className="ai-icon" />}
-                  {m.who === 'user' ? 'You' : 'Visquery'}
-                </span>
-                <div className="bubble">{m.who === 'ai' ? renderBubble(m.text) : m.text}</div>
-              </motion.div>
-            ))}
-            {thinking && (
-              <motion.div
-                key="thinking"
-                className="msg ai"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-              >
-                <span className="who ai-who">
-                  <Sparkles size={9} className="ai-icon" />
-                  Visquery
-                </span>
-                <div className="bubble">
-                  <span className="thinking">
-                    reading sources{' '}
-                    <span className="dot" />
-                    <span className="dot" />
-                    <span className="dot" />
-                  </span>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <div className="rag-input">
-          <div className="rag-suggest">
-            {STARTER_QS.map((q) => (
-              <button key={q} onClick={() => ask(q)}>
-                {q}
-              </button>
-            ))}
-          </div>
-          <div className="rag-input-row">
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Ask anything about this precedent…"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && draft.trim()) ask(draft.trim());
-              }}
-            />
-            <button
-              className="rag-send"
-              disabled={!draft.trim() || thinking}
-              onClick={() => draft.trim() && ask(draft.trim())}
+          {/* ── RAG Chat ── */}
+          {rightMode === 'rag' && (
+            <motion.div
+              key="rag"
+              className="rag-inner"
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+              transition={{ duration: 0.18 }}
             >
-              Ask
-            </button>
-          </div>
-        </div>
+              <div className="rag-head">
+                <div className="lbl">Ask about this image</div>
+                <h3>What would you like to know about{' '}
+                  <em>{displayTitle || 'this building'}</em>?
+                </h3>
+              </div>
+
+              <div className="rag-stream" ref={streamRef}>
+                <AnimatePresence initial={false}>
+                  {msgs.map((m, i) => (
+                    <motion.div
+                      key={i}
+                      className={`msg ${m.who}`}
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1] }}
+                    >
+                      <span className={`who${m.who === 'ai' ? ' ai-who' : ''}`}>
+                        {m.who === 'ai' && <Sparkles size={9} className="ai-icon" />}
+                        {m.who === 'user' ? 'You' : 'Visquery'}
+                        {hasArchive && m.source && (
+                          <span
+                            className={`msg-src-badge${m.source === 'archive' ? ' is-archive' : ''}`}
+                            title={m.source === 'archive' ? 'Answered from the archive' : 'Answered from this image'}
+                          >
+                            {m.source === 'archive' ? <Archive size={8} /> : <ImageIcon size={8} />}
+                          </span>
+                        )}
+                      </span>
+                      <div className="bubble">{m.who === 'ai' ? renderBubble(m.text) : m.text}</div>
+                      {m.who === 'ai' && (m.citations?.length ?? 0) > 0 && (
+                        <div className="cite-chips">
+                          {m.citations!.map((c, ci) => (
+                            <button
+                              key={`${c.source_id}-${c.page}-${ci}`}
+                              className="cite-chip"
+                              onClick={() => setDrawerCitation(c)}
+                              title={`${c.title} — page ${c.page}`}
+                            >
+                              {c.title.length > 26 ? `${c.title.slice(0, 26)}…` : c.title}, p.{c.page}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  ))}
+                  {thinking && (
+                    <motion.div
+                      key="thinking"
+                      className="msg ai"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                    >
+                      <span className="who ai-who">
+                        <Sparkles size={9} className="ai-icon" />
+                        Visquery
+                      </span>
+                      <div className="bubble">
+                        <span className="thinking">
+                          reading sources{' '}
+                          <span className="dot" />
+                          <span className="dot" />
+                          <span className="dot" />
+                        </span>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <div className="rag-input">
+                {hasArchive && (
+                  <div className="ask-source-row">
+                    <span className="ask-source-label">Answer from:</span>
+                    <button
+                      className={`ask-source-opt${askSource === 'image' ? ' on' : ''}`}
+                      onClick={() => setAskSource('image')}
+                    >
+                      <ImageIcon size={10} /> This image
+                    </button>
+                    <button
+                      className={`ask-source-opt${askSource === 'archive' ? ' on' : ''}`}
+                      onClick={() => setAskSource('archive')}
+                    >
+                      <Archive size={10} /> Archive
+                    </button>
+                    {askSource === 'archive' && readyDocs.length > 1 && (
+                      <span className="ask-scope-wrap">
+                        <button className="ask-scope-btn" onClick={() => setScopeOpen((o) => !o)}>
+                          {scopeIds.length === 0 ? 'All documents' : `${scopeIds.length} selected`}
+                          <ChevronDown size={10} />
+                        </button>
+                        {scopeOpen && (
+                          <span className="ask-scope-pop">
+                            <label className="ask-scope-item">
+                              <input
+                                type="checkbox"
+                                checked={scopeIds.length === 0}
+                                onChange={() => setScopeIds([])}
+                              />
+                              All documents
+                            </label>
+                            {readyDocs.map((d) => (
+                              <label key={d.source_id} className="ask-scope-item">
+                                <input
+                                  type="checkbox"
+                                  checked={scopeIds.includes(d.source_id)}
+                                  onChange={() =>
+                                    setScopeIds((prev) =>
+                                      prev.includes(d.source_id)
+                                        ? prev.filter((x) => x !== d.source_id)
+                                        : [...prev, d.source_id],
+                                    )
+                                  }
+                                />
+                                {d.title}
+                              </label>
+                            ))}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                )}
+                <div className="rag-suggest">
+                  {STARTER_QS.map((q) => (
+                    <button key={q} onClick={() => ask(q)}>
+                      {q}
+                    </button>
+                  ))}
+                </div>
+                <div className="rag-input-row">
+                  <input
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder="Ask anything about this precedent…"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && draft.trim()) ask(draft.trim());
+                    }}
+                  />
+                  <button
+                    className="rag-send"
+                    disabled={!draft.trim() || thinking}
+                    onClick={() => draft.trim() && ask(draft.trim())}
+                  >
+                    Ask
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── Segmentation ── */}
+          {rightMode === 'segment' && (
+            <motion.div
+              key="segment"
+              className="rag-inner"
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+              transition={{ duration: 0.18 }}
+              style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+            >
+              <SegmentPanel imageId={item.image_id} imageUrl={item.image_url} onFindSimilar={onSegmentSearch} />
+            </motion.div>
+          )}
+
+          {/* ── Image Edit ── */}
+          {rightMode === 'edit' && (
+            <motion.div
+              key="edit"
+              className="rag-inner"
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+              transition={{ duration: 0.18 }}
+              style={{ flex: 1, minHeight: 0, overflow: 'hidden auto', display: 'flex', flexDirection: 'column' }}
+            >
+              <ImageEditPanel
+                imageUrl={item.image_url}
+                imageTitle={displayTitle || undefined}
+              />
+            </motion.div>
+          )}
+
+        </AnimatePresence>
       </aside>
 
       {/* Mobile tab bar — only visible on narrow screens via CSS */}
@@ -562,6 +759,34 @@ export default function DetailView({
           Ask AI
         </button>
       </div>
+
+      {/* Archive citation drawer */}
+      <AnimatePresence>
+        {drawerCitation && (
+          <motion.div
+            className="cite-drawer"
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 40 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="cite-drawer-head">
+              <div>
+                <div className="cite-drawer-title">{drawerCitation.title}</div>
+                <div className="cite-drawer-page">Page {drawerCitation.page}</div>
+              </div>
+              <button
+                className="cite-drawer-close"
+                onClick={() => setDrawerCitation(null)}
+                aria-label="Close citation"
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <p className="cite-drawer-snippet">{drawerCitation.snippet}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <ArtifactsModal
         open={artifactsOpen}

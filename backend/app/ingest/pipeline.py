@@ -190,4 +190,13 @@ def ingest_image(image_path: Path, settings) -> dict[str, Any]:
             "error": str(exc),
         }
 
+    # ── 7. Optional component-level segment indexing (RQ) ───────────────
+    try:
+        from app.workers.segment_indexer import enqueue_segment_indexing
+        seg_job = enqueue_segment_indexing(settings, str(image_id))
+        if seg_job:
+            log.info("segment_index_enqueued", job_id=seg_job)
+    except Exception as exc:
+        log.warning("segment_index_enqueue_failed", error=str(exc))
+
     return {"status": "ok", "image_id": str(image_id), "file": image_path.name}

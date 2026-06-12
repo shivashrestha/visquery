@@ -2,12 +2,16 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutGrid, List, SlidersHorizontal, X } from 'lucide-react';
+import { FileText, LayoutGrid, List, SlidersHorizontal, X } from 'lucide-react';
 import type { SearchResultItem, FilterState } from '@/lib/types';
+import type { ReportFocus } from '@/lib/api';
 import BuildingCard from './BuildingCard';
 import RowCard from './RowCard';
 import FilterSidebar from './FilterSidebar';
 import SearchBar from './SearchBar';
+import ToolsMenu from './ToolsMenu';
+import ReportSelectBar from './ReportSelectBar';
+import ReportView from './ReportView';
 
 interface ResultsViewProps {
   title?: string | null;
@@ -30,6 +34,8 @@ interface ResultsViewProps {
   hasMore?: boolean;
   onLoadMore?: () => void;
   uploadedImageUrl?: string | null;
+  /** Ephemeral tryout result pinned ahead of search results (selectable for reports). */
+  pinnedItem?: SearchResultItem | null;
 }
 
 function SkeletonGrid() {
@@ -67,9 +73,27 @@ export default function ResultsView({
   hasMore = false,
   onLoadMore,
   uploadedImageUrl,
+  pinnedItem = null,
 }: ResultsViewProps) {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+
+  // Precedent report selection
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Record<string, SearchResultItem>>({});
+  const [reportFocus, setReportFocus] = useState<ReportFocus | ''>('');
+  const [reportItems, setReportItems] = useState<SearchResultItem[] | null>(null);
+
+  const toggleSelect = (item: SearchResultItem) => {
+    setSelected((prev) => {
+      const next = { ...prev };
+      if (next[item.image_id]) delete next[item.image_id];
+      else next[item.image_id] = item;
+      return next;
+    });
+  };
+  const exitSelectMode = () => { setSelectMode(false); setSelected({}); };
+  const selectedItems = Object.values(selected);
 
   return (
     <div className="results-shell">
@@ -141,7 +165,17 @@ export default function ResultsView({
             )}
           </div>
           <div className="results-meta">
-            {headerAction && headerAction}
+             {headerAction && headerAction}
+            <ToolsMenu
+              actions={[
+                {
+                  label: 'Report from selection',
+                  desc: 'Pick 2+ results, generate a comparative precedent study',
+                  Icon: FileText,
+                  onClick: () => setSelectMode(true),
+                },
+              ]}
+            />
             {/* Mobile filter button */}
             <button
               className={`mobile-filter-btn${activeFilterCount > 0 ? ' has-active' : ''}`}
@@ -198,7 +232,7 @@ export default function ResultsView({
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
               >
-                {items.map((item, i) => (
+                {[...(pinnedItem ? [pinnedItem] : []), ...items].map((item, i) => (
                   <BuildingCard
                     key={item.image_id}
                     result={item}
@@ -207,6 +241,9 @@ export default function ResultsView({
                     fav={!!favs[item.image_id]}
                     queryTerms={queryTerms}
                     index={i}
+                    selectable={selectMode}
+                    selected={!!selected[item.image_id]}
+                    onSelectToggle={toggleSelect}
                   />
                 ))}
               </motion.div>
@@ -249,6 +286,25 @@ export default function ResultsView({
           </div>
         )}
 
+        <AnimatePresence>
+          {selectMode && (
+            <ReportSelectBar
+              count={selectedItems.length}
+              focus={reportFocus}
+              onFocusChange={setReportFocus}
+              onGenerate={() => setReportItems(selectedItems)}
+              onCancel={exitSelectMode}
+            />
+          )}
+        </AnimatePresence>
+
+        {reportItems && (
+          <ReportView
+            items={reportItems}
+            focus={reportFocus || undefined}
+            onClose={() => setReportItems(null)}
+          />
+        )}
       </main>
     </div>
   );

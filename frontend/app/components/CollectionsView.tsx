@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FileText } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
 import BuildingCard from './BuildingCard';
-import { search } from '@/lib/api';
+import ReportSelectBar from './ReportSelectBar';
+import ReportView from './ReportView';
+import { search, type ReportFocus } from '@/lib/api';
 import { getPersonalImages, personalImageToResultItem } from '@/lib/personalImages';
 
 interface CollectionsViewProps {
@@ -50,6 +53,23 @@ export default function CollectionsView({ favItems, onOpen, favs, onFav }: Colle
   const [loading, setLoading] = useState(true);
   const [personalItems, setPersonalItems] = useState<SearchResultItem[]>([]);
   const loadedRef = useRef(false);
+
+  // Precedent report selection
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Record<string, SearchResultItem>>({});
+  const [reportFocus, setReportFocus] = useState<ReportFocus | ''>('');
+  const [reportItems, setReportItems] = useState<SearchResultItem[] | null>(null);
+
+  const toggleSelect = (item: SearchResultItem) => {
+    setSelected((prev) => {
+      const next = { ...prev };
+      if (next[item.image_id]) delete next[item.image_id];
+      else next[item.image_id] = item;
+      return next;
+    });
+  };
+  const exitSelectMode = () => { setSelectMode(false); setSelected({}); };
+  const selectedItems = Object.values(selected);
 
   useEffect(() => {
     const imgs = getPersonalImages();
@@ -110,6 +130,13 @@ export default function CollectionsView({ favItems, onOpen, favs, onFav }: Colle
           <p className="q">Browse by architectural style</p>
         </div>
         <span className="results-meta">
+          <button
+            className={`btn-ghost report-mode-toggle${selectMode ? ' on' : ''}`}
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+          >
+            <FileText size={11} />
+            {selectMode ? 'Cancel selection' : 'Precedent Report'}
+          </button>
           {allCollections.length} collections
         </span>
       </div>
@@ -168,6 +195,9 @@ export default function CollectionsView({ favItems, onOpen, favs, onFav }: Colle
                   onFav={onFav}
                   fav={!!favs[item.image_id]}
                   index={i}
+                  selectable={selectMode}
+                  selected={!!selected[item.image_id]}
+                  onSelectToggle={toggleSelect}
                 />
               ))}
             </div>
@@ -175,6 +205,25 @@ export default function CollectionsView({ favItems, onOpen, favs, onFav }: Colle
         </motion.section>
       ))}
 
+      <AnimatePresence>
+        {selectMode && (
+          <ReportSelectBar
+            count={selectedItems.length}
+            focus={reportFocus}
+            onFocusChange={setReportFocus}
+            onGenerate={() => setReportItems(selectedItems)}
+            onCancel={exitSelectMode}
+          />
+        )}
+      </AnimatePresence>
+
+      {reportItems && (
+        <ReportView
+          items={reportItems}
+          focus={reportFocus || undefined}
+          onClose={() => setReportItems(null)}
+        />
+      )}
     </main>
   );
 }

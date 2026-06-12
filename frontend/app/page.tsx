@@ -10,11 +10,13 @@ import SiteFooter from './components/SiteFooter';
 import SearchBar from './components/SearchBar';
 import ResultsView from './components/ResultsView';
 import DetailView from './components/DetailView';
+import SegmentSearchModal from './components/SegmentSearchModal';
 import CollectionsView from './components/CollectionsView';
 import LibraryView from './components/LibraryView';
 import { useSearch } from '@/lib/hooks';
 import type { SearchResultItem } from '@/lib/types';
-import { analyzeEphemeral, getSimilarImages } from '@/lib/api';
+import { analyzeEphemeral, getSimilarImages, searchBySegmentCrop, segmentImageFromUrl } from '@/lib/api';
+import type { SegmentObject } from '@/lib/api';
 import architectureStyles from './architecture_styles.json';
 
 function shortStyleTag(style: string): string {
@@ -432,6 +434,18 @@ export default function HomePage() {
   const [uploadAnalyzing, setUploadAnalyzing] = useState(false);
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null);
   const [tryoutError, setTryoutError] = useState<string | null>(null);
+  // Component-level segment search ("find similar canopies")
+  const [segmentSearch, setSegmentSearch] = useState<{
+    label: string | null;
+    cropUrl: string;
+    items: SearchResultItem[];
+    loading: boolean;
+    error: string | null;
+  } | null>(null);
+  // Segments detected on the tryout upload, shown as chips in the ephemeral detail view
+  const [tryoutSegments, setTryoutSegments] = useState<SegmentObject[] | null>(null);
+  // Ephemeral tryout result — pinned in ResultsView so it can join precedent reports
+  const [tryoutItem, setTryoutItem] = useState<SearchResultItem | null>(null);
   const [theme, setTheme] = useState<'monograph' | 'dark'>('monograph');
 
   const [exampleQueries, setExampleQueries] = useState<{ text: string; style: string }[]>([]);
@@ -512,6 +526,7 @@ export default function HomePage() {
 
   const handleSearch = useCallback((q: string) => {
     setImageSearchUploadUrl(null);
+    setTryoutItem(null);
     submit(q);
     setView({ name: 'results' });
   }, [submit]);
@@ -525,6 +540,7 @@ export default function HomePage() {
     const blobUrl = URL.createObjectURL(file);
     blobUrlRef.current = blobUrl;
     setImageSearchUploadUrl(blobUrl);
+    setTryoutItem(null);
     await submitByImage(file);
     setView({ name: 'results' });
   }, [submitByImage]);
@@ -539,11 +555,20 @@ export default function HomePage() {
     blobUrlRef.current = blobUrl;
     setUploadPreviewUrl(blobUrl);
     setUploadAnalyzing(true);
+    setTryoutSegments(null);
 
     const analysisPromise = analyzeEphemeral(file).catch((err) => {
       console.error('[Ephemeral analysis failed]', err);
       return null;
     });
+
+    // Detect components in parallel — surfaced as clickable chips in the detail view
+    const segmentsPromise = segmentImageFromUrl(blobUrl, 'fastsam')
+      .then((r) => r.segments.filter((s) => s.area_ratio >= 0.02).slice(0, 12))
+      .catch((err) => {
+        console.error('[Tryout segmentation failed]', err);
+        return null;
+      });
 
     await submitByImage(file);
     setView({ name: 'results' });
@@ -577,12 +602,35 @@ export default function HomePage() {
         tags: analysis.architecture_style_classified ? [analysis.architecture_style_classified] : [],
         ephemeral_artifacts: analysis,
       };
+      setTryoutItem(uploadedItem);
       setView({ name: 'detail', item: uploadedItem, from: 'results' });
+      const segs = await segmentsPromise;
+      if (segs && segs.length > 0) setTryoutSegments(segs);
     } finally {
       setUploadAnalyzing(false);
       setUploadPreviewUrl(null);
     }
   }, [submitByImage]);
+
+  // Component-level search: segment crop → CLIP → similar components.
+  // Opens as an overlay so the segmented detail view stays mounted underneath —
+  // closing returns to the same segmentation to try another region.
+  const handleSegmentSearch = useCallback(async (seg: SegmentObject, excludeImageId?: string) => {
+    setSegmentSearch({
+      label: seg.class_name,
+      cropUrl: seg.crop_data_url,
+      items: [],
+      loading: true,
+      error: null,
+    });
+    try {
+      const resp = await searchBySegmentCrop(seg.crop_data_url, 12, excludeImageId);
+      setSegmentSearch((prev) => prev ? { ...prev, items: resp.results, loading: false } : prev);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Segment search failed';
+      setSegmentSearch((prev) => prev ? { ...prev, loading: false, error: message } : prev);
+    }
+  }, []);
 
   const handleOpen = useCallback((item: SearchResultItem) => {
     const from =
@@ -607,6 +655,9 @@ export default function HomePage() {
     if (name === 'home') {
       clearSearch();
       setImageSearchUploadUrl(null);
+      setSegmentSearch(null);
+      setTryoutSegments(null);
+      setTryoutItem(null);
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
@@ -794,6 +845,7 @@ export default function HomePage() {
               hasMore={results ? allResults.length > 0 && allResults.length % 30 === 0 : false}
               onLoadMore={loadMore}
               uploadedImageUrl={imageSearchUploadUrl}
+              pinnedItem={tryoutItem}
             />
           </motion.div>
         )}
@@ -852,10 +904,37 @@ export default function HomePage() {
               favs={favs}
               onFav={toggleFav}
               onOpen={handleOpen}
+              onSegmentSearch={(seg) =>
+                handleSegmentSearch(
+                  seg,
+                  view.item.image_id.startsWith('ephemeral-') ? undefined : view.item.image_id,
+                )
+              }
+              segmentChips={
+                view.item.image_id.startsWith('ephemeral-')
+                  ? tryoutSegments ?? undefined
+                  : undefined
+              }
             />
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Segment similarity search overlay ── */}
+      {segmentSearch && (
+        <SegmentSearchModal
+          label={segmentSearch.label}
+          cropUrl={segmentSearch.cropUrl}
+          items={segmentSearch.items}
+          loading={segmentSearch.loading}
+          error={segmentSearch.error}
+          onClose={() => setSegmentSearch(null)}
+          onOpen={(item) => {
+            setSegmentSearch(null);
+            handleOpen(item);
+          }}
+        />
+      )}
 
       {/* ── Analyzing overlay — scanner design ── */}
       <AnimatePresence>

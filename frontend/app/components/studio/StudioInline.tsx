@@ -163,6 +163,7 @@ function Shell({ user, onLogout }: { user: StudioUser; onLogout: () => void }) {
               favs={favs}
               onFav={toggleFav}
               onOpen={handleOpen}
+              archiveEnabled
             />
           </div>
         )}

@@ -50,6 +50,15 @@ class Settings(BaseSettings):
     storage_root: str = "/data"
     embedding_version: str = "2"
 
+    # Tag validation (tag_validator worker)
+    tag_vlm_confidence_min: float = 0.6    # VLM self-consistency floor for "verified"
+    tag_clip_agreement_min: float = 0.25   # CLIP zero-shot cosine for tag agreement
+    tag_clip_floor: float = 0.12           # below this CLIP score = hard disagreement
+    tag_neighbor_k: int = 10               # CLIP neighbors polled for consensus
+    tag_neighbor_consensus_min: int = 6    # neighbors sharing a tag = consensus pass
+    tag_neighbor_min_corpus: int = 500     # index smaller than this → skip neighbor signal
+    tag_provisional_penalty: float = 0.05  # score penalty for provisional rows in /api/search
+
     # Retrieval defaults
     mmr_lambda: float = 0.7
     fusion_method: Literal["clip_only", "weighted", "rrf"] = "rrf"

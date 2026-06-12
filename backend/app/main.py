@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, Security, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.security import APIKeyHeader
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -19,7 +20,7 @@ from prometheus_client import (
 )
 
 from app.config import get_settings
-from app.routers import admin, images, search, contact, sources
+from app.routers import admin, images, search, contact, sources, segment, reports, archive
 
 structlog.configure(
     processors=[
@@ -52,7 +53,10 @@ async def lifespan(app: FastAPI):
     from app.services.vector_store import get_clip_store, get_text_store
     from app.deps import _get_engine
     from app.models.building import Base
-    import app.models.source  # noqa: F401 — register Image on Base
+    import app.models.source   # noqa: F401 — register Image on Base
+    import app.models.segment  # noqa: F401 — register ImageSegment on Base
+    import app.models.report   # noqa: F401 — register Report on Base
+    import app.models.document # noqa: F401 — register DocSource/DocChunk on Base
 
     settings = get_settings()
     engine = _get_engine(settings)
@@ -67,7 +71,10 @@ async def lifespan(app: FastAPI):
         loop.run_in_executor(CLIP_EXECUTOR, warmup),
         loop.run_in_executor(TEXT_EXECUTOR, text_warmup),
     )
+
+    eviction_task = asyncio.create_task(segment.start_eviction_loop())
     yield
+    eviction_task.cancel()
 
 
 def create_app() -> FastAPI:
@@ -81,6 +88,8 @@ def create_app() -> FastAPI:
         redoc_url=None,
         lifespan=lifespan,
     )
+
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
     app.add_middleware(
@@ -147,6 +156,9 @@ def create_app() -> FastAPI:
     app.include_router(admin.router, prefix="/api", dependencies=[Depends(_verify_admin)])
     app.include_router(contact.router, prefix="/api")
     app.include_router(sources.router, prefix="/api")
+    app.include_router(segment.router, prefix="/api")
+    app.include_router(reports.router, prefix="/api")
+    app.include_router(archive.router, prefix="/api")
 
     @app.get("/health")
     async def health() -> dict:

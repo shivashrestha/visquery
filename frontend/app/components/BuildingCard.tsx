@@ -14,6 +14,9 @@ interface BuildingCardProps {
   queryTerms?: string[];
   index?: number;
   compact?: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectToggle?: (result: SearchResultItem) => void;
 }
 
 /** Derive a pseudo-photo motif from metadata */
@@ -56,6 +59,9 @@ export default function BuildingCard({
   queryTerms = [],
   index = 0,
   compact = false,
+  selectable = false,
+  selected = false,
+  onSelectToggle,
 }: BuildingCardProps) {
   const { metadata, source, explanation } = result;
   const motif = getMotif(result);
@@ -68,8 +74,8 @@ export default function BuildingCard({
 
   return (
     <motion.article
-      className="card"
-      onClick={() => onClick(result)}
+      className={`card${selectable ? ' card-selectable' : ''}${selected ? ' card-selected' : ''}`}
+      onClick={() => (selectable && onSelectToggle ? onSelectToggle(result) : onClick(result))}
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8, transition: { duration: 0.18 } }}
@@ -103,6 +109,23 @@ export default function BuildingCard({
         <div className="card-corners" aria-hidden="true">
           <span /><span /><span /><span />
         </div>
+
+        {selectable && (
+          <button
+            className={`card-select${selected ? ' on' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectToggle?.(result);
+            }}
+            aria-label={selected ? 'Deselect for report' : 'Select for report'}
+          >
+            {selected && (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            )}
+          </button>
+        )}
 
         {onFav && (
           <motion.button

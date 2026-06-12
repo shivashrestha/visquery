@@ -1,0 +1,69 @@
+{
+    "model_id": "fastsam_s",
+    "model_name": "FastSam-S",
+    "runtime": "tflite",
+    "precision": "float",
+    "tool_versions": {
+        "qairt": "2.45.0.260326154327",
+        "litert": "1.4.3"
+    },
+    "model_files": {
+        "fastsam_s.tflite": {
+            "inputs": {
+                "image": {
+                    "shape": [
+                        1,
+                        640,
+                        640,
+                        3
+                    ],
+                    "dtype": "float32",
+                    "io_type": "image",
+                    "image_metadata": {},
+                    "value_range": [
+                        0.0,
+                        1.0
+                    ]
+                }
+            },
+            "outputs": {
+                "boxes": {
+                    "shape": [
+                        1,
+                        8400,
+                        4
+                    ],
+                    "dtype": "float32",
+                    "io_type": "bbox",
+                    "bbox_metadata": {}
+                },
+                "scores": {
+                    "shape": [
+                        1,
+                        8400
+                    ],
+                    "dtype": "float32",
+                    "softmax_applied": true,
+                    "labels_file": "coco_labels.txt"
+                },
+                "mask_coeffs": {
+                    "shape": [
+                        1,
+                        8400,
+                        32
+                    ],
+                    "dtype": "float32"
+                },
+                "mask_protos": {
+                    "shape": [
+                        1,
+                        160,
+                        160,
+                        32
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        }
+    }
+}

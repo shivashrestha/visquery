@@ -119,6 +119,11 @@ def get_clip_store(version: str, data_dir: str) -> VectorStore:
     return _get_store("clip", version, dim=512, data_dir=data_dir)
 
 
+def get_segment_store(version: str, data_dir: str) -> VectorStore:
+    """Component-level CLIP index. id_map entries are image_segments UUIDs."""
+    return _get_store("segments", version, dim=512, data_dir=data_dir)
+
+
 def get_style_store(version: str, data_dir: str) -> VectorStore:
     # Gram vector dimension depends on the VGG-16 layer selection.
     # Empirically this is 2048 for the 4-layer configuration in style.py.
