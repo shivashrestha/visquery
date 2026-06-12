@@ -180,13 +180,52 @@ def _image_display_title(img: Image) -> str:
     )
 
 
+_TRAILING_COMMA = re.compile(r",\s*([}\]])")
+
+
+def _loads_lenient(text: str) -> dict:
+    """json.loads with repair passes for common LLM defects."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Trailing commas before } or ]
+    repaired = _TRAILING_COMMA.sub(r"\1", text)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        pass
+    # Raw newlines inside string literals (LLM writes multi-line body_md unescaped)
+    out: list[str] = []
+    in_str = False
+    escaped = False
+    for ch in repaired:
+        if in_str:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+            elif ch == "\n":
+                out.append("\\n")
+                continue
+            elif ch == "\t":
+                out.append("\\t")
+                continue
+        elif ch == '"':
+            in_str = True
+        out.append(ch)
+    return json.loads("".join(out))
+
+
 def _parse_report_json(raw: str) -> dict:
     raw = raw.strip()
     if raw.startswith("```"):
         lines = raw.splitlines()
         raw = "\n".join(lines[1:-1] if lines and lines[-1].strip() == "```" else lines[1:])
     match = re.search(r"\{.*\}", raw, re.DOTALL)
-    data = json.loads(match.group() if match else raw)
+    data = _loads_lenient(match.group() if match else raw)
     sections = data.get("sections")
     if not isinstance(sections, list) or not sections:
         raise ValueError("LLM response missing sections")
@@ -287,15 +326,24 @@ async def generate_precedent_report(
     from app.services.llm import complete
 
     loop = asyncio.get_running_loop()
-    try:
-        raw = await loop.run_in_executor(
-            None,
-            lambda: complete(system=_SYSTEM_PROMPT, user=user_msg, temperature=0.2, max_tokens=2400),
-        )
-        report_body = _parse_report_json(raw)
-    except Exception as exc:
-        logger.error("report_generation_failed", error=str(exc))
-        raise HTTPException(status_code=502, detail=f"Report generation failed: {exc}")
+    report_body: dict | None = None
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        # Retry once at temperature 0 — covers occasional malformed JSON output
+        temp = 0.2 if attempt == 0 else 0.0
+        try:
+            raw = await loop.run_in_executor(
+                None,
+                lambda t=temp: complete(system=_SYSTEM_PROMPT, user=user_msg, temperature=t, max_tokens=2400),
+            )
+            report_body = _parse_report_json(raw)
+            break
+        except Exception as exc:
+            last_exc = exc
+            logger.warning("report_generation_attempt_failed", attempt=attempt, error=str(exc))
+    if report_body is None:
+        logger.error("report_generation_failed", error=str(last_exc))
+        raise HTTPException(status_code=502, detail=f"Report generation failed: {last_exc}")
 
     report_json = {
         "sections": report_body["sections"],
@@ -414,7 +462,9 @@ def _render_pdf(record: Report, db: Session, settings: Settings) -> bytes:
     h1 = ParagraphStyle("h1", fontName="Times-Bold", fontSize=22, leading=26, textColor=ink, spaceAfter=2)
     eyebrow = ParagraphStyle("eyebrow", fontName="Courier", fontSize=7.5, leading=10, textColor=accent, spaceAfter=6)
     h2 = ParagraphStyle("h2", fontName="Times-Bold", fontSize=14, leading=18, textColor=ink, spaceBefore=14, spaceAfter=4)
-    body = ParagraphStyle("body", fontName="Helvetica", fontSize=9.5, leading=14.5, textColor=ink, spaceAfter=6)
+    from reportlab.lib.enums import TA_JUSTIFY
+
+    body = ParagraphStyle("body", fontName="Helvetica", fontSize=9.5, leading=14.5, textColor=ink, spaceAfter=6, alignment=TA_JUSTIFY)
     caption = ParagraphStyle("caption", fontName="Courier", fontSize=7, leading=9, textColor=muted)
 
     buf = io.BytesIO()

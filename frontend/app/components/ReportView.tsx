@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, FileText, X } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
@@ -80,14 +81,28 @@ export default function ReportView({ items, focus, onClose }: ReportViewProps) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Lock page scroll while the modal is open
   useEffect(() => {
-    let cancelled = false;
+    const prevBody = document.body.style.overflow;
+    const prevHtml = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevBody;
+      document.documentElement.style.overflow = prevHtml;
+    };
+  }, []);
+
+  // Ref guard: StrictMode dev double-mount must not fire two LLM generations
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
     generatePrecedentReport(items, focus)
-      .then((r) => { if (!cancelled) setReport(r); })
+      .then(setReport)
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Report generation failed');
+        setError(err instanceof Error ? err.message : 'Report generation failed');
       });
-    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -114,7 +129,9 @@ export default function ReportView({ items, focus, onClose }: ReportViewProps) {
     return map;
   }, [report, items]);
 
-  return (
+  // Portal to body — escapes transformed ancestors so the backdrop truly
+  // covers the viewport and blocks interaction with the page behind it.
+  return createPortal(
     <AnimatePresence>
       <motion.div
         className="report-backdrop"
@@ -209,6 +226,7 @@ export default function ReportView({ items, focus, onClose }: ReportViewProps) {
           </div>
         </motion.div>
       </motion.div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
