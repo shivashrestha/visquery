@@ -30,11 +30,15 @@ def _resolve_model_path() -> str:
         return override
 
     # Auto-detect local checkpoint next to other checkpoints
-    candidates = [
-        Path("/data/checkpoints/bge-small-en-v1.5"),           # Docker
-        Path(__file__).resolve().parents[4]                      # repo root
-        / "storage/data/checkpoints/bge-small-en-v1.5",
-    ]
+    candidates = [Path("/data/checkpoints/bge-small-en-v1.5")]  # Docker
+    try:
+        # repo root — shallow in Docker (/app/app/...), so parents[4] may not exist
+        candidates.append(
+            Path(__file__).resolve().parents[4]
+            / "storage/data/checkpoints/bge-small-en-v1.5"
+        )
+    except IndexError:
+        pass
     for p in candidates:
         if p.exists():
             return str(p)
@@ -65,3 +69,18 @@ def embed_text_query(text: str) -> np.ndarray:
         convert_to_numpy=True,
     )
     return vec[0].astype(np.float32)
+
+
+def embed_passages(texts: list[str]) -> np.ndarray:
+    """Return L2-normalised float32 (N, 384) embeddings for document passages.
+
+    BGE asymmetric retrieval: passages are encoded WITHOUT the query prefix.
+    """
+    model = _get_model()
+    vecs = model.encode(
+        texts,
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+        batch_size=32,
+    )
+    return vecs.astype(np.float32)

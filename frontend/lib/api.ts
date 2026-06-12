@@ -207,6 +207,227 @@ export async function getSimilarImages(imageId: string, k = 6): Promise<SearchRe
   return res.json() as Promise<SearchResponse>;
 }
 
+export type SegmentModel = 'fastsam';
+
+export interface SegmentObject {
+  id: number;
+  confidence: number;
+  bbox: [number, number, number, number]; // [x1,y1,x2,y2] normalised 0–1
+  area_ratio: number;
+  color: [number, number, number];        // [R, G, B]
+  class_name: string | null;             // null = class-agnostic (FastSAM)
+  crop_data_url: string;
+}
+
+export interface SegmentResponse {
+  segments: SegmentObject[];
+  annotated_data_url: string;
+  image_width: number;
+  image_height: number;
+  model_used: string;
+}
+
+export async function segmentImage(imageId: string, model: SegmentModel = 'fastsam'): Promise<SegmentResponse> {
+  const res = await fetch(`/api/images/${imageId}/segment?model=${model}`, { method: 'POST' });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Segmentation failed (${res.status}): ${text}`);
+  }
+  return res.json() as Promise<SegmentResponse>;
+}
+
+export async function segmentImageFromUrl(imageUrl: string, model: SegmentModel = 'fastsam'): Promise<SegmentResponse> {
+  const imgRes = await fetch(imageUrl);
+  if (!imgRes.ok) throw new Error('Could not load image for segmentation');
+  const blob = await imgRes.blob();
+  const form = new FormData();
+  form.append('file', blob, 'image.jpg');
+  const res = await fetch(`/api/images/segment-upload?model=${model}`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Segmentation failed (${res.status}): ${text}`);
+  }
+  return res.json() as Promise<SegmentResponse>;
+}
+
+// ── Component-level segment search ───────────────────────────────────────────
+export interface SegmentSearchSegment {
+  id: string;
+  label: string | null;
+  bbox: [number, number, number, number]; // [x, y, w, h] normalised 0–1
+  mask_area_ratio: number;
+  crop_url: string;
+}
+
+export type SegmentSearchResultItem = import('./types').SearchResultItem & {
+  segment?: SegmentSearchSegment;
+};
+
+export interface SegmentSearchResponse {
+  results: SegmentSearchResultItem[];
+  query: { label: string | null; crop_url: string | null };
+}
+
+/** Search similar components from a crop data URL (panel "Find similar"). */
+export async function searchBySegmentCrop(
+  cropDataUrl: string,
+  k = 12,
+  excludeImageId?: string,
+): Promise<SegmentSearchResponse> {
+  const blob = await (await fetch(cropDataUrl)).blob();
+  const form = new FormData();
+  form.append('file', blob, 'crop.jpg');
+  if (excludeImageId) form.append('exclude_image_id', excludeImageId);
+  const res = await fetch(`/api/search/by-segment?k=${k}`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Segment search failed (${res.status}): ${text}`);
+  }
+  return res.json() as Promise<SegmentSearchResponse>;
+}
+
+/** Search similar components from an already-indexed segment reference. */
+export async function searchBySegmentRef(
+  imageId: string,
+  segmentIndex: number,
+  k = 12,
+): Promise<SegmentSearchResponse> {
+  const form = new FormData();
+  form.append('image_id', imageId);
+  form.append('segment_index', String(segmentIndex));
+  const res = await fetch(`/api/search/by-segment?k=${k}`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Segment search failed (${res.status}): ${text}`);
+  }
+  return res.json() as Promise<SegmentSearchResponse>;
+}
+
+// ── Precedent reports ─────────────────────────────────────────────────────────
+export interface ReportSection {
+  heading: string;
+  body_md: string;
+  image_refs: number[];
+}
+
+export interface ReportImageEntry {
+  ref: number;
+  image_id: string | null;
+  title: string;
+  image_url: string | null;
+}
+
+export interface PrecedentReport {
+  report_id: string;
+  cached: boolean;
+  sections: ReportSection[];
+  images: ReportImageEntry[];
+  focus: string | null;
+  generated_at: string;
+}
+
+export type ReportFocus = 'materials' | 'structure' | 'typology' | 'climate';
+
+/**
+ * Generate a comparative precedent report from selected result items.
+ * Stored images go first, ephemeral (tryout) items after — IMG-n refs follow
+ * that order, so callers should map refs against the returned `images` list.
+ */
+export async function generatePrecedentReport(
+  items: import('./types').SearchResultItem[],
+  focus?: ReportFocus,
+): Promise<PrecedentReport> {
+  const stored = items.filter((i) => !i.ephemeral_artifacts && !i.image_id.startsWith('ephemeral-'));
+  const ephemeral = items.filter((i) => i.ephemeral_artifacts || i.image_id.startsWith('ephemeral-'));
+  const res = await fetch('/api/reports/precedent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      image_ids: stored.map((i) => i.image_id),
+      ephemeral_items: ephemeral.map((i) => i.ephemeral_artifacts ?? {}),
+      focus: focus ?? null,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Report generation failed (${res.status}): ${text}`);
+  }
+  return res.json() as Promise<PrecedentReport>;
+}
+
+export function reportPdfUrl(reportId: string): string {
+  return `/api/reports/${reportId}/pdf`;
+}
+
+// ── Ask the Archive — RAG chat over ingested documents ───────────────────────
+export interface ArchiveSource {
+  source_id: string;
+  title: string;
+  file_type: string;
+  page_count: number | null;
+  chunk_count: number;
+  index_status: 'queued' | 'indexing' | 'ready' | 'failed';
+  index_error: string | null;
+}
+
+export interface ArchiveStatus {
+  has_documents: boolean;
+  document_count: number;
+  sources: ArchiveSource[];
+}
+
+export interface ArchiveCitation {
+  source_id: string;
+  title: string;
+  page: number;
+  snippet: string;
+}
+
+export interface ArchiveChatResponse {
+  answer: string;
+  citations: ArchiveCitation[];
+}
+
+/** Studio-gated: returns null for anonymous users (401) or any error. */
+export async function getArchiveStatus(): Promise<ArchiveStatus | null> {
+  try {
+    const res = await fetch('/api/archive/status', { cache: 'no-store' });
+    if (!res.ok) return null;
+    return (await res.json()) as ArchiveStatus;
+  } catch {
+    return null;
+  }
+}
+
+export async function chatArchive(
+  message: string,
+  history: { who: 'user' | 'ai'; text: string }[] = [],
+  sourceIds?: string[],
+): Promise<ArchiveChatResponse> {
+  const res = await fetch('/api/archive/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message,
+      history,
+      source_ids: sourceIds && sourceIds.length > 0 ? sourceIds : null,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Archive chat failed (${res.status})`);
+  }
+  return (await res.json()) as ArchiveChatResponse;
+}
+
+export async function deleteArchiveSource(sourceId: string): Promise<void> {
+  const res = await fetch(`/api/archive/sources/${encodeURIComponent(sourceId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    throw new Error(`Document delete failed (${res.status})`);
+  }
+}
+
 export async function chatImage(imageId: string, message: string): Promise<string> {
   const res = await fetch(`${BACKEND_URL}/api/images/${imageId}/chat`, {
     method: 'POST',

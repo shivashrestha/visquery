@@ -190,6 +190,7 @@ def _run_vlm_extraction(
     settings: Any,
     image_vec: Optional[np.ndarray],
     enrich_style: bool,
+    extra_instruction: str = "",
 ) -> dict[str, Any]:
     client, model, local_mode = _build_client(settings)
 
@@ -198,6 +199,10 @@ def _run_vlm_extraction(
         logger.info("vlm_gate_rejected_non_architecture")
         return {**_EMPTY, "building_type": "not_applicable", "subject_valid": False}
 
+    prompt = _ARTIFACT_PROMPT
+    if extra_instruction:
+        prompt = f"{_ARTIFACT_PROMPT}\n\nADDITIONAL CONTEXT:\n{extra_instruction}"
+
     try:
         t0 = time.monotonic()
         response = client.chat(
@@ -205,7 +210,7 @@ def _run_vlm_extraction(
             messages=[
                 {
                     "role": "user",
-                    "content": _ARTIFACT_PROMPT,
+                    "content": prompt,
                     "images": [image_b64],
                 }
             ],
@@ -263,6 +268,7 @@ def extract_image_artifacts(
     settings: Any,
     image_vec: Optional[np.ndarray] = None,
     enrich_style: bool = True,
+    extra_instruction: str = "",
 ) -> dict[str, Any]:
     """Extract artifacts from image file via VLM. Returns title + full artifact structure."""
     path = Path(storage_path)
@@ -270,7 +276,7 @@ def extract_image_artifacts(
         raise FileNotFoundError(f"Image not found: {storage_path}")
     raw = _optimize_for_vlm(path.read_bytes())
     image_b64 = base64.standard_b64encode(raw).decode()
-    return _run_vlm_extraction(image_b64, settings, image_vec, enrich_style)
+    return _run_vlm_extraction(image_b64, settings, image_vec, enrich_style, extra_instruction)
 
 
 def extract_image_artifacts_from_bytes(

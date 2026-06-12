@@ -24,10 +24,12 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 import structlog
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, HttpUrl
+from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
+from app.deps import get_db
 
 logger = structlog.get_logger()
 
@@ -71,6 +73,9 @@ class IngestResult(BaseModel):
     job_ids: list[str] = []
     image_ids: list[str] = []
     errors: list[str] = []
+    # Document text indexing (archive chat) — set for PDF/PPTx uploads only
+    doc_source_id: Optional[str] = None
+    doc_job_id: Optional[str] = None
 
 
 # ── Helpers ───────────────────────────────────────────────
@@ -262,6 +267,61 @@ async def ingest_from_url(
         return result
 
 
+# ── Document text indexing (archive chat) ────────────────
+def _register_document(
+    content: bytes,
+    filename: str,
+    file_type: str,
+    owner: Optional[str],
+    settings: Settings,
+    db: Session,
+) -> tuple[Optional[str], Optional[str]]:
+    """Persist the original file, create a doc_sources row, enqueue text indexing.
+
+    Returns (doc_source_id, doc_job_id). Best-effort: failure here never blocks
+    the image-extraction path.
+    """
+    try:
+        from app.models.document import DocSource
+        from app.workers.doc_indexer import enqueue_doc_indexing
+
+        sha = hashlib.sha256(content).hexdigest()
+        existing = db.query(DocSource).filter(DocSource.sha256 == sha).first()
+        if existing:
+            job_id = None
+            if existing.index_status in ("queued", "failed"):
+                job_id = enqueue_doc_indexing(settings, str(existing.id))
+            return str(existing.id), job_id
+
+        doc_dir = Path(settings.storage_root) / "documents"
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        source_id = uuid.uuid4()
+        ext = ".pdf" if file_type == "pdf" else ".pptx"
+        dest = doc_dir / f"{source_id}{ext}"
+        dest.write_bytes(content)
+
+        db.add(DocSource(
+            id=source_id,
+            title=filename,
+            file_type=file_type,
+            storage_path=str(dest.resolve()),
+            sha256=sha,
+            index_status="queued",
+            owner=owner,
+        ))
+        db.commit()
+
+        job_id = enqueue_doc_indexing(settings, str(source_id))
+        return str(source_id), job_id
+    except Exception as exc:
+        logger.warning("doc_register_failed", file=filename, error=str(exc))
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return None, None
+
+
 # ── PDF / PPTX upload ─────────────────────────────────────
 def _extract_pdf_images(content: bytes) -> list[tuple[bytes, str]]:
     """Return list of (image_bytes, ext) from PDF via PyMuPDF (fitz)."""
@@ -307,8 +367,10 @@ def _extract_pptx_images(content: bytes) -> list[tuple[bytes, str]]:
 
 @router.post("/pdf", response_model=IngestResult)
 async def ingest_from_pdf(
+    request: Request,
     file: UploadFile = File(...),
     settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
 ) -> IngestResult:
     content = await file.read()
     if not content:
@@ -324,6 +386,14 @@ async def ingest_from_pdf(
 
     result = IngestResult(source_type="pdf", discovered=len(images), enqueued=0, skipped=0)
     src_title = file.filename or "uploaded.pdf"
+
+    # Archive text indexing — additive, image path below is unchanged
+    owner = request.headers.get("X-Studio-Owner") or None
+    result.doc_source_id, result.doc_job_id = _register_document(
+        content, src_title, "pdf", owner, settings, db,
+    )
+    if result.doc_job_id:
+        result.job_ids.append(result.doc_job_id)
     src_id = f"upload://pdf/{uuid.uuid4().hex}"
     for img_bytes, ext in images:
         res = _process_image_bytes(
@@ -341,8 +411,10 @@ async def ingest_from_pdf(
 
 @router.post("/pptx", response_model=IngestResult)
 async def ingest_from_pptx(
+    request: Request,
     file: UploadFile = File(...),
     settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
 ) -> IngestResult:
     content = await file.read()
     if not content:
@@ -359,6 +431,14 @@ async def ingest_from_pptx(
 
     result = IngestResult(source_type="pptx", discovered=len(images), enqueued=0, skipped=0)
     src_title = file.filename or "uploaded.pptx"
+
+    # Archive text indexing — additive, image path below is unchanged
+    owner = request.headers.get("X-Studio-Owner") or None
+    result.doc_source_id, result.doc_job_id = _register_document(
+        content, src_title, "pptx", owner, settings, db,
+    )
+    if result.doc_job_id:
+        result.job_ids.append(result.doc_job_id)
     src_id = f"upload://pptx/{uuid.uuid4().hex}"
     for img_bytes, ext in images:
         res = _process_image_bytes(

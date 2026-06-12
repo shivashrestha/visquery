@@ -20,7 +20,37 @@ import {
   LogOut,
   User,
   AlertCircle,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldQuestion,
 } from 'lucide-react';
+import { getImageUrl } from '@/lib/api';
+
+interface TagQualityCounts {
+  verified: number;
+  provisional: number;
+  quarantined: number;
+  unvalidated: number;
+}
+
+interface QuarantinedImage {
+  image_id: string;
+  title: string | null;
+  stripped: string[];
+  vlm_confidence: number | null;
+  clip: Record<string, number>;
+  neighbors: {
+    k: number;
+    style_votes: number;
+    building_type_votes: number;
+  } | null;
+  retry: { second_style?: string; second_status?: string } | null;
+}
+
+interface TagQualityData {
+  counts: TagQualityCounts;
+  quarantined: QuarantinedImage[];
+}
 
 interface StudioUser {
   name: string;
@@ -227,6 +257,85 @@ function LoginForm({ onLogin }: { onLogin: (u: StudioUser) => void }) {
   );
 }
 
+// ─── Tag Quality panel — read-only monitoring, no review workflow ──
+function TagQualityPanel() {
+  const [data, setData] = useState<TagQualityData | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/tag-quality')
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setError(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (error || !data) return null;
+
+  const { counts, quarantined } = data;
+  const counters = [
+    { label: 'Verified', value: counts.verified, icon: ShieldCheck, cls: 'sv-tq-ok' },
+    { label: 'Provisional', value: counts.provisional, icon: ShieldQuestion, cls: 'sv-tq-mid' },
+    { label: 'Quarantined', value: counts.quarantined, icon: ShieldAlert, cls: 'sv-tq-bad' },
+  ];
+
+  return (
+    <div className="sv-tq-panel">
+      <div className="sv-tq-head">
+        <h3 className="sv-tq-title">Tag Quality</h3>
+        <span className="sv-tq-sub">Automated cross-signal validation — VLM confidence, CLIP agreement, neighbor consensus</span>
+      </div>
+
+      <div className="sv-tq-counters">
+        {counters.map((c) => {
+          const Icon = c.icon;
+          return (
+            <div key={c.label} className={`sv-tq-counter ${c.cls}`}>
+              <Icon size={16} />
+              <span className="sv-tq-value">{c.value.toLocaleString()}</span>
+              <span className="sv-tq-label">{c.label}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {quarantined.length > 0 && (
+        <div className="sv-tq-list">
+          <p className="sv-tq-list-head">Quarantined images — conflicting signals (diagnostics only)</p>
+          {quarantined.map((q) => (
+            <div key={q.image_id} className="sv-tq-row">
+              <img className="sv-tq-thumb" src={getImageUrl(q.image_id)} alt={q.title ?? 'Quarantined image'} loading="lazy" />
+              <div className="sv-tq-row-body">
+                <span className="sv-tq-row-title">{q.title || q.image_id.slice(0, 8)}</span>
+                <div className="sv-tq-signals">
+                  {q.stripped.map((s) => (
+                    <span key={s} className="sv-tq-chip sv-tq-chip-stripped">stripped: {s.replace(':', ' · ')}</span>
+                  ))}
+                  {q.vlm_confidence != null && (
+                    <span className="sv-tq-chip">VLM {q.vlm_confidence.toFixed(2)}</span>
+                  )}
+                  {Object.entries(q.clip ?? {}).slice(0, 3).map(([tag, score]) => (
+                    <span key={tag} className="sv-tq-chip">CLIP {tag.split(':')[1] ?? tag}: {score.toFixed(2)}</span>
+                  ))}
+                  {q.neighbors && (
+                    <span className="sv-tq-chip">
+                      neighbors {q.neighbors.style_votes}/{q.neighbors.k} style
+                    </span>
+                  )}
+                  {q.retry?.second_style && (
+                    <span className="sv-tq-chip">retry → {q.retry.second_style} ({q.retry.second_status})</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Dashboard ────────────────────────────────────────────
 function StudioDashboard({ user, onLogout }: { user: StudioUser; onLogout: () => void }) {
   const initials = user.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
@@ -296,6 +405,8 @@ function StudioDashboard({ user, onLogout }: { user: StudioUser; onLogout: () =>
           );
         })}
       </div>
+
+      <TagQualityPanel />
 
       <div className="sv-coming-soon-bar">
         Full Studio dashboard coming soon — your account is active and ready for early access.
@@ -1225,6 +1336,110 @@ const CSS = `
     color: var(--ink-muted);
     opacity: 0.6;
   }
+  /* Tag Quality panel */
+  .sv-tq-panel {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.4rem 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .sv-tq-head { margin-bottom: 1rem; }
+  .sv-tq-title {
+    font-family: var(--serif);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 0.2rem;
+  }
+  .sv-tq-sub { font-size: 0.72rem; color: var(--ink-muted); line-height: 1.5; }
+  .sv-tq-counters {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  @media (max-width: 480px) { .sv-tq-counters { grid-template-columns: 1fr; } }
+  .sv-tq-counter {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+  }
+  .sv-tq-ok  { color: #15803D; }
+  .sv-tq-mid { color: var(--accent); }
+  .sv-tq-bad { color: #B91C1C; }
+  .sv-tq-value {
+    font-family: var(--mono);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .sv-tq-label {
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .sv-tq-list { display: flex; flex-direction: column; gap: 0.5rem; }
+  .sv-tq-list-head {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #B91C1C;
+    opacity: 0.8;
+    margin-bottom: 0.25rem;
+  }
+  .sv-tq-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 0.6rem 0.7rem;
+  }
+  .sv-tq-thumb {
+    width: 52px; height: 52px;
+    object-fit: cover;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+    background: var(--line);
+  }
+  .sv-tq-row-body { min-width: 0; }
+  .sv-tq-row-title {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 0.35rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sv-tq-signals { display: flex; flex-wrap: wrap; gap: 5px; }
+  .sv-tq-chip {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--ink-soft);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    padding: 2px 7px;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+  .sv-tq-chip-stripped {
+    color: #B91C1C;
+    border-color: rgba(185,28,28,0.25);
+    background: rgba(185,28,28,0.05);
+  }
+
   .sv-coming-soon-bar {
     font-size: 0.75rem;
     color: var(--ink-muted);

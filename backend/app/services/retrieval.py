@@ -309,6 +309,24 @@ async def run_retrieval(
         candidate_ids = _apply_filters(candidate_ids, filters, db)
     latency["filter"] = _elapsed(t)
 
+    # 3b. Tag-quality penalty — provisional rows stay searchable but rank lower
+    if candidate_ids and settings.tag_provisional_penalty > 0:
+        from app.models.source import Image as _Image
+        provisional = {
+            str(r.id)
+            for r in db.query(_Image.id)
+            .filter(
+                _Image.id.in_([uuid.UUID(i) for i in candidate_ids]),
+                _Image.tag_status == "provisional",
+            )
+            .all()
+        }
+        if provisional:
+            # Multiplicative — score scales differ between RRF and cosine paths
+            for iid in provisional:
+                candidate_scores[iid] *= 1.0 - settings.tag_provisional_penalty
+            candidate_ids.sort(key=lambda i: candidate_scores[i], reverse=True)
+
     final_ids = candidate_ids[: config.top_k_final]
 
     # 4. Fetch metadata

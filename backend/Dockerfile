@@ -23,10 +23,14 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
 # Bake CLIP ViT-B/32 weights into image — no runtime download needed
-RUN python -c "import open_clip; open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai')" && \
+RUN python -c "import open_clip; open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai'); open_clip.create_model_and_transforms('ViT-B-32-quickgelu', pretrained='openai')" && \
     chmod -R 755 /opt/hf-cache
 
 COPY app/ ./app/
+COPY fastsam-s/ ./fastsam-s/
+COPY scripts/ ./scripts/
+COPY alembic.ini ./alembic.ini
+COPY alembic/ ./alembic/
 
 RUN mkdir -p /data/images /data/metadata /data/vectors /data/faiss /data/checkpoints && \
     chown -R appuser:appuser /app /data

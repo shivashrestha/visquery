@@ -89,3 +89,7 @@ storage/tmp/
 raw_scrapped_data_1
 visquery-studio
 docs/STUDIO_STRATEGY.md
+backend/fastsam-s/fastsam_s.tflite
+storage/segments/
+storage/documents/
+docs/PROPOSAL.md

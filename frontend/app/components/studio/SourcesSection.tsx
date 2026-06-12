@@ -5,8 +5,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Link2, FileText, Presentation, Film, Cloud,
   Upload, Loader2, CheckCircle2, AlertCircle, RefreshCw, X,
+  Archive, MessageSquare, Trash2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import ArchiveChatModal from '../ArchiveChatModal';
+import {
+  deleteArchiveSource,
+  getArchiveStatus,
+  type ArchiveSource,
+  type ArchiveStatus,
+} from '@/lib/api';
 
 type SourceMethod = 'url' | 'pdf' | 'pptx' | 'video' | 's3';
 
@@ -38,6 +46,115 @@ const METHODS: { id: SourceMethod; label: string; desc: string; icon: LucideIcon
   { id: 'video', label: 'Video',        desc: 'Sample keyframes from a video file or link.',      icon: Film },
   { id: 's3',    label: 'S3 bucket',    desc: 'Import an entire bucket of project imagery.',      icon: Cloud },
 ];
+
+// ─── Documents panel — archive text indexing status + per-doc "Ask" ──
+const DOC_STATUS_LABEL: Record<string, string> = {
+  queued: 'Queued',
+  indexing: 'Indexing…',
+  ready: 'Ready',
+  failed: 'Failed',
+};
+
+function DocumentsPanel({ refreshKey }: { refreshKey: number }) {
+  const [status, setStatus] = useState<ArchiveStatus | null>(null);
+  const [askScope, setAskScope] = useState<string[] | null>(null); // null = closed
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const s = await getArchiveStatus();
+    if (s) setStatus(s);
+  }, []);
+
+  useEffect(() => { load(); }, [load, refreshKey]);
+
+  // Poll while any document is still queued/indexing
+  useEffect(() => {
+    const pending = (status?.sources ?? []).some(
+      (s) => s.index_status === 'queued' || s.index_status === 'indexing',
+    );
+    if (!pending) return;
+    const iv = setInterval(load, 5000);
+    return () => clearInterval(iv);
+  }, [status, load]);
+
+  const docs = status?.sources ?? [];
+  if (docs.length === 0) return null;
+
+  const readyDocs = docs.filter((d) => d.index_status === 'ready' && d.chunk_count > 0);
+
+  async function handleDelete(d: ArchiveSource) {
+    if (!window.confirm(`Remove "${d.title}" from the archive? Its indexed text will be deleted.`)) return;
+    setDeleting(d.source_id);
+    try {
+      await deleteArchiveSource(d.source_id);
+      await load();
+    } catch { /* row stays; next poll reflects truth */ }
+    setDeleting(null);
+  }
+
+  return (
+    <div className="vqs-source-history vqs-rise">
+      <p className="vqs-eyebrow" style={{ color: 'var(--vqs-muted)', marginBottom: 6 }}>
+        <Archive size={11} style={{ verticalAlign: '-1px', marginRight: 5 }} />
+        Documents
+      </p>
+      <p style={{ fontSize: 12, color: 'var(--ink-muted)', marginBottom: 14, lineHeight: 1.55 }}>
+        Text from uploaded PDF and PowerPoint files, indexed for &quot;Ask the Archive&quot; chat.
+      </p>
+      <div className="vqs-source-history-card">
+        {docs.map((d) => (
+          <div key={d.source_id} className="vqs-batch" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span className="vqs-batch-method">
+              {d.file_type === 'pdf' ? <FileText size={16} /> : <Presentation size={16} />}
+            </span>
+            <div className="vqs-batch-label-wrap" style={{ flex: 1, minWidth: 0 }}>
+              <div className="vqs-batch-label" title={d.title}>{d.title}</div>
+              <div className="vqs-batch-sub">
+                {d.page_count != null ? `${d.page_count} pages · ` : ''}
+                {d.chunk_count} chunks · {DOC_STATUS_LABEL[d.index_status] ?? d.index_status}
+                {d.index_status === 'failed' && d.index_error ? ` — ${d.index_error}` : ''}
+              </div>
+            </div>
+            {(d.index_status === 'queued' || d.index_status === 'indexing') && (
+              <Loader2 className="vqs-spin" size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+            )}
+            {d.index_status === 'failed' && (
+              <AlertCircle size={14} style={{ color: '#B91C1C', flexShrink: 0 }} />
+            )}
+            {d.index_status === 'ready' && d.chunk_count > 0 && (
+              <button
+                className="vqs-btn"
+                style={{ padding: '5px 11px', fontSize: 12, flexShrink: 0 }}
+                onClick={() => setAskScope([d.source_id])}
+                title={`Ask the archive about ${d.title}`}
+              >
+                <MessageSquare size={13} /> Ask
+              </button>
+            )}
+            <button
+              className="vqs-file-clear"
+              style={{ flexShrink: 0 }}
+              onClick={() => handleDelete(d)}
+              disabled={deleting === d.source_id}
+              aria-label={`Delete ${d.title}`}
+              title="Remove from archive"
+            >
+              {deleting === d.source_id ? <Loader2 className="vqs-spin" size={14} /> : <Trash2 size={14} />}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {askScope && readyDocs.length > 0 && (
+        <ArchiveChatModal
+          sources={readyDocs}
+          initialScope={askScope}
+          onClose={() => setAskScope(null)}
+        />
+      )}
+    </div>
+  );
+}
 
 export default function SourcesSection() {
   const [method, setMethod] = useState<SourceMethod>('url');
@@ -85,7 +202,9 @@ export default function SourcesSection() {
     return () => { cancelled = true; clearInterval(iv); };
   }, [batches]);
 
-  const handleResult = useCallback((id: string, _method: SourceMethod, _label: string, result: IngestResult | null, error?: string) => {
+  const [docRefresh, setDocRefresh] = useState(0);
+
+  const handleResult = useCallback((id: string, method: SourceMethod, _label: string, result: IngestResult | null, error?: string) => {
     if (error) {
       updateBatch(id, { pending: false, error });
       return;
@@ -94,6 +213,8 @@ export default function SourcesSection() {
     const jobs: Record<string, { status: string }> = {};
     for (const jid of result.job_ids ?? []) jobs[jid] = { status: 'queued' };
     updateBatch(id, { pending: false, result, jobs });
+    // PDF/PPTx uploads register a document for archive indexing — refresh the panel
+    if (method === 'pdf' || method === 'pptx') setDocRefresh((n) => n + 1);
   }, [updateBatch]);
 
   // ─── URL form ──────────────────────────────
@@ -471,6 +592,8 @@ export default function SourcesSection() {
           </motion.div>
         )}
       </div>
+
+      <DocumentsPanel refreshKey={docRefresh} />
 
       {batches.length > 0 && (
         <div className="vqs-source-history vqs-rise">

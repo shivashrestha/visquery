@@ -51,6 +51,9 @@ class Image(Base):
     tags             = Column(ARRAY(Text), nullable=False, server_default=text("'{}'::text[]"))
     ingest_status    = Column(Text, nullable=False, server_default=text("'embedded'"))
     metadata_ready   = Column(Boolean, nullable=False, server_default=text("false"))
+    # Automated tag validation (tag_validator worker). NULL = not yet validated.
+    tag_status       = Column(Text, nullable=True)   # verified | provisional | quarantined
+    tag_signals      = Column(JSONB, nullable=True)
     created_at       = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
     owner            = Column(Text, nullable=True)   # studio user email; NULL = public/seeded
 
@@ -86,6 +89,8 @@ class ImageRead(BaseModel):
     tags: list[str]
     ingest_status: str
     metadata_ready: bool
+    tag_status: Optional[str] = None
+    tag_signals: Optional[dict] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
