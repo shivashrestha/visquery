@@ -6,8 +6,15 @@ export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 function loadSystemPrompt(): string {
-  const filePath = path.join(process.cwd(), 'data', 'assistant-context.md');
-  return fs.readFileSync(filePath, 'utf-8');
+  // Try cwd-relative path first (next start from frontend/), then fallback
+  const candidates = [
+    path.join(process.cwd(), 'data', 'assistant-context.md'),
+    path.join(process.cwd(), 'frontend', 'data', 'assistant-context.md'),
+  ];
+  for (const filePath of candidates) {
+    if (fs.existsSync(filePath)) return fs.readFileSync(filePath, 'utf-8');
+  }
+  throw new Error(`assistant-context.md not found. Tried: ${candidates.join(', ')}`);
 }
 
 export async function POST(req: NextRequest) {
