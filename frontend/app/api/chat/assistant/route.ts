@@ -14,8 +14,13 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.OLLAMA_API_KEY;
   const model = process.env.OLLAMA_MODEL ?? 'gemma4:31b-cloud';
 
+  if (!apiKey) {
+    console.error('[assistant] OLLAMA_API_KEY not set in environment');
+    return NextResponse.json({ error: 'Assistant not configured' }, { status: 503 });
+  }
+
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+  headers['Authorization'] = `Bearer ${apiKey}`;
 
   try {
     const res = await fetch(`${baseUrl}/api/chat`, {
