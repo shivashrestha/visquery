@@ -279,6 +279,43 @@ function SegPreviewModal({ result, segments, originalUrl, onClose, onOpenRegion,
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [tab, setTab] = useState<'fragments' | 'annotated'>('fragments');
 
+  // Resize state
+  const [previewSize, setPreviewSize] = useState<{ w: number; h: number } | null>(null);
+  const previewCardRef = useRef<HTMLDivElement>(null);
+  const resizingPreview = useRef(false);
+  const justResizedPreview = useRef(false);
+  const resizeStartPreview = useRef({ x: 0, y: 0, w: 0, h: 0 });
+
+  const onPreviewResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const card = previewCardRef.current; if (!card) return;
+    resizingPreview.current = true;
+    justResizedPreview.current = false;
+    resizeStartPreview.current = { x: e.clientX, y: e.clientY, w: card.offsetWidth, h: card.offsetHeight };
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizingPreview.current) return;
+      const dw = e.clientX - resizeStartPreview.current.x;
+      const dh = e.clientY - resizeStartPreview.current.y;
+      setPreviewSize({
+        w: Math.max(480, Math.min(window.innerWidth * 0.98, resizeStartPreview.current.w + dw)),
+        h: Math.max(320, Math.min(window.innerHeight * 0.98, resizeStartPreview.current.h + dh)),
+      });
+    };
+    const onUp = () => {
+      if (resizingPreview.current) justResizedPreview.current = true;
+      resizingPreview.current = false;
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
   // Zoom state for annotated tab
   const [scale, setScale] = useState(1);
   const [panX, setPanX] = useState(0);
@@ -430,15 +467,20 @@ function SegPreviewModal({ result, segments, originalUrl, onClose, onOpenRegion,
       <motion.div
         className="seg-preview-backdrop"
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        onClick={onClose}
+        onClick={() => { if (justResizedPreview.current) { justResizedPreview.current = false; return; } onClose(); }}
       >
         <motion.div
+          ref={previewCardRef}
           className="seg-preview-modal"
           initial={{ opacity: 0, scale: 0.97, y: 18 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.97, y: 18 }}
           transition={{ duration: 0.22, ease: [0.22, 0.61, 0.36, 1] }}
           onClick={(e) => e.stopPropagation()}
+          style={previewSize ? {
+            width: `${previewSize.w}px`, maxWidth: 'none',
+            height: `${previewSize.h}px`, maxHeight: 'none',
+          } : undefined}
         >
           {/* Modal header */}
           <div className="seg-preview-header">
@@ -506,6 +548,14 @@ function SegPreviewModal({ result, segments, originalUrl, onClose, onOpenRegion,
                   const seg = segments[selectedIdx];
                   const [x1, y1, x2, y2] = seg.bbox;
                   const colorRgb = `rgb(${seg.color.join(',')})`;
+                  // Position below bbox; flip above when bbox bottom is near container edge
+                  const showAbove = y2 > 0.80;
+                  const barTop = showAbove
+                    ? `calc(${y1 * 100}% - 2px)`
+                    : `calc(${y2 * 100}% + 4px)`;
+                  const barTransform = showAbove
+                    ? 'translate(-50%, -100%)'
+                    : 'translateX(-50%)';
                   return (
                     <>
                       <div
@@ -520,7 +570,13 @@ function SegPreviewModal({ result, segments, originalUrl, onClose, onOpenRegion,
                         }}
                       />
                       <div
-                        className="seg-frag-actionbar seg-frag-actionbar--annotated"
+                        className="seg-frag-actionbar"
+                        style={{
+                          bottom: 'auto',
+                          top: barTop,
+                          left: `${((x1 + x2) / 2) * 100}%`,
+                          transform: barTransform,
+                        }}
                         onClick={(e) => e.stopPropagation()}
                         onMouseDown={(e) => e.stopPropagation()}
                       >
@@ -576,6 +632,7 @@ function SegPreviewModal({ result, segments, originalUrl, onClose, onOpenRegion,
               ))}
             </div>
           </div>
+          <div className="seg-preview-resize-handle" onMouseDown={onPreviewResizeStart} title="Drag to resize" />
         </motion.div>
       </motion.div>
     </AnimatePresence>
@@ -597,10 +654,47 @@ function HeroModal({ segments, initialIdx, onClose, onFindSimilar }: HeroModalPr
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const imgContainerRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const lastPinchDist = useRef<number | null>(null);
   const lastPinchMid  = useRef<{ x: number; y: number } | null>(null);
+
+  // Resize state
+  const [modalSize, setModalSize] = useState<{ w: number; h: number } | null>(null);
+  const resizing = useRef(false);
+  const justResized = useRef(false);
+  const resizeStart = useRef({ x: 0, y: 0, w: 0, h: 0 });
+
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const card = cardRef.current; if (!card) return;
+    resizing.current = true;
+    justResized.current = false;
+    resizeStart.current = { x: e.clientX, y: e.clientY, w: card.offsetWidth, h: card.offsetHeight };
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizing.current) return;
+      const dw = e.clientX - resizeStart.current.x;
+      const dh = e.clientY - resizeStart.current.y;
+      setModalSize({
+        w: Math.max(360, Math.min(window.innerWidth * 0.96, resizeStart.current.w + dw)),
+        h: Math.max(280, Math.min(window.innerHeight * 0.96, resizeStart.current.h + dh)),
+      });
+    };
+    const onUp = () => {
+      if (resizing.current) justResized.current = true;
+      resizing.current = false;
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   const resetZoom = useCallback(() => { setScale(1); setPanX(0); setPanY(0); }, []);
   useEffect(() => { resetZoom(); }, [idx, resetZoom]);
@@ -711,15 +805,20 @@ function HeroModal({ segments, initialIdx, onClose, onFindSimilar }: HeroModalPr
       <motion.div
         className="seg-hero-backdrop"
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        onClick={onClose}
+        onClick={() => { if (justResized.current) { justResized.current = false; return; } onClose(); }}
       >
         <motion.div
+          ref={cardRef}
           className="seg-hero-card"
           initial={{ opacity: 0, scale: 0.96, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 16 }}
           transition={{ duration: 0.24, ease: [0.22, 0.61, 0.36, 1] }}
           onClick={(e) => e.stopPropagation()}
+          style={modalSize ? {
+            width: `${modalSize.w}px`, maxWidth: 'none',
+            height: `${modalSize.h}px`, maxHeight: 'none',
+          } : undefined}
         >
           <div className="seg-hero-header">
             <div className="seg-hero-title">
@@ -794,6 +893,7 @@ function HeroModal({ segments, initialIdx, onClose, onFindSimilar }: HeroModalPr
             )}
             <p className="seg-hero-hint">Scroll / pinch to zoom · drag to pan · double-click to reset · ← → navigate</p>
           </div>
+          <div className="seg-hero-resize-handle" onMouseDown={onResizeStart} title="Drag to resize" />
         </motion.div>
       </motion.div>
     </AnimatePresence>

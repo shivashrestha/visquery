@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CachedImage from './CachedImage';
-import { ArrowLeft, Heart, MessageSquare, Info, Sparkles, Bot, Layers, Search, Archive, ImageIcon, X, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Heart, MessageSquare, Info, Sparkles, Bot, Layers, Search, Archive, ImageIcon, X, ChevronDown, FileText } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
 import type { SegmentObject, ArchiveStatus, ArchiveCitation } from '@/lib/api';
 import BuildingCard from './BuildingCard';
@@ -11,6 +11,7 @@ import ArtifactsModal from './ArtifactsModal';
 import ToolsMenu, { type RightPanelMode } from './ToolsMenu';
 import SegmentPanel from './SegmentPanel';
 import ImageEditPanel from './ImageEditPanel';
+import ReportView from './ReportView';
 import { chatImage, chatEphemeral, chatArchive, getArchiveStatus } from '@/lib/api';
 
 interface DetailViewProps {
@@ -130,6 +131,7 @@ export default function DetailView({
   const [mobileTab, setMobileTab] = useState<'detail' | 'chat'>('detail');
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [rightMode, setRightMode] = useState<RightPanelMode>('rag');
+  const [reportItems, setReportItems] = useState<SearchResultItem[] | null>(null);
 
   // ── Resizable RAG panel ──────────────────────────────────────
   const MIN_RAG = 220;
@@ -371,7 +373,18 @@ export default function DetailView({
             >
               <Layers size={12} /> Artifacts
             </motion.button>
-            <ToolsMenu activeMode={rightMode} onSelect={setRightMode} />
+            <motion.button
+              className="btn-ghost"
+              onClick={() => setReportItems([item])} //onClick={() => setReportItems(related.length > 0 ? [item, ...related.slice(0, 5)] : [item])}
+              whileTap={{ scale: 0.92 }}
+              title="Generate a precedent report for this image"
+            >
+              <FileText size={12} /> Report
+            </motion.button>
+            <ToolsMenu
+              activeMode={rightMode}
+              onSelect={setRightMode}
+            />
           </div>
         </div>
 
@@ -796,6 +809,13 @@ export default function DetailView({
         skipFetch={item.ephemeral_artifacts !== undefined}
         onClose={() => setArtifactsOpen(false)}
       />
+
+      {reportItems && (
+        <ReportView
+          items={reportItems}
+          onClose={() => setReportItems(null)}
+        />
+      )}
     </div>
   );
 }

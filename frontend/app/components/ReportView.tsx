@@ -7,6 +7,7 @@ import { Download, FileText, X } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
 import {
   generatePrecedentReport,
+  generateSinglePrecedentReport,
   reportPdfUrl,
   type PrecedentReport,
   type ReportFocus,
@@ -98,7 +99,14 @@ export default function ReportView({ items, focus, onClose }: ReportViewProps) {
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    generatePrecedentReport(items, focus)
+    const isSingleStored =
+      items.length === 1 &&
+      !items[0].ephemeral_artifacts &&
+      !items[0].image_id.startsWith('ephemeral-');
+    const generate = isSingleStored
+      ? generateSinglePrecedentReport(items[0], focus)
+      : generatePrecedentReport(items, focus);
+    generate
       .then(setReport)
       .catch((err) => {
         setError(err instanceof Error ? err.message : 'Report generation failed');
@@ -106,7 +114,7 @@ export default function ReportView({ items, focus, onClose }: ReportViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Map IMG-n refs → display thumbnails. Stored refs match by image_id;
+  // Map IMG-n refs to display thumbnails. Stored refs match by image_id;
   // ephemeral entries (image_id null) fall back to the items' local blob URLs.
   const refMap = useMemo(() => {
     const map = new Map<number, { title: string; thumb: string | null }>();
@@ -121,7 +129,7 @@ export default function ReportView({ items, focus, onClose }: ReportViewProps) {
       if (entry.image_id) {
         thumb = byId.get(entry.image_id)?.image_url ?? `/api/images/${entry.image_id}/raw`;
       } else {
-        thumb = ephemerals[ephIdx]?.image_url ?? null;
+        thumb = ephemerals[ephIdx]?.image_url ?? entry.image_url ?? null;
         ephIdx += 1;
       }
       map.set(entry.ref, { title: entry.title, thumb });
@@ -129,7 +137,7 @@ export default function ReportView({ items, focus, onClose }: ReportViewProps) {
     return map;
   }, [report, items]);
 
-  // Portal to body — escapes transformed ancestors so the backdrop truly
+  // Portal to body escapes transformed ancestors so the backdrop truly
   // covers the viewport and blocks interaction with the page behind it.
   return createPortal(
     <AnimatePresence>
@@ -149,10 +157,10 @@ export default function ReportView({ items, focus, onClose }: ReportViewProps) {
           <div className="report-header">
             <div className="report-header-title">
               <FileText size={13} />
-              <span>Precedent Study</span>
+              <span>{items.length === 1 ? 'Precedent Report' : 'Precedent Study'}</span>
               {report && (
                 <span className="report-count">
-                  {report.images.length} precedents{report.cached ? ' · cached' : ''}
+                  {report.images.length} precedent{report.images.length === 1 ? '' : 's'}{report.cached ? ' - cached' : ''}
                 </span>
               )}
             </div>
@@ -175,7 +183,9 @@ export default function ReportView({ items, focus, onClose }: ReportViewProps) {
                 <div className="report-loading-pulse" />
                 <p className="report-loading-title">Synthesizing precedent study</p>
                 <p className="report-loading-sub">
-                  Comparing {items.length} precedents — typology, materials, structure, climate
+                  {items.length === 1
+                    ? 'Analyzing typology, materials, structure, and climate response'
+                    : `Comparing ${items.length} precedents - typology, materials, structure, climate`}
                 </p>
               </div>
             )}
@@ -219,7 +229,7 @@ export default function ReportView({ items, focus, onClose }: ReportViewProps) {
 
                 <p className="report-colophon">
                   Generated {report.generated_at.slice(0, 10)}
-                  {report.focus ? ` · focus: ${report.focus}` : ''} · Visquery
+                  {report.focus ? ` - focus: ${report.focus}` : ''} - Visquery
                 </p>
               </article>
             )}
