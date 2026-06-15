@@ -223,62 +223,107 @@ async def search_by_segment(
         raise HTTPException(422, detail="Provide either a crop file or image_id + segment_index")
 
     store = get_segment_store(settings.embedding_version, settings.faiss_data_dir)
-    if store.size == 0:
-        return {"results": [], "query": {"label": query_label, "crop_url": query_crop_url}}
-
-    # Oversample: an image contributes up to 12 segments and the query's own
-    # segments must be excluded — k*4 can exhaust after a few parents.
-    seg_ids, scores = store.search(qvec, k * 8)
-    score_by_id = dict(zip(seg_ids, scores))
-
-    seg_uuids = [uuid.UUID(s) for s in seg_ids]
-    rows = (
-        db.query(ImageSegment, ImageModel)
-        .join(ImageModel, ImageSegment.image_id == ImageModel.id)
-        .filter(ImageSegment.id.in_(seg_uuids))
-        .all()
-    )
-    by_seg_id = {str(seg.id): (seg, img) for seg, img in rows}
 
     results: list[dict] = []
     seen_images: set[str] = set()
-    for sid in seg_ids:  # FAISS order = descending score
-        entry = by_seg_id.get(sid)
-        if entry is None:
-            continue
-        seg, img = entry
-        if exclude_image is not None and seg.image_id == exclude_image:
-            continue
-        iid = str(img.id)
-        if iid in seen_images:
-            continue
-        seen_images.add(iid)
-        results.append({
-            "building_id": None,
-            "image_id": iid,
-            "score": round(score_by_id[sid], 4),
-            "metadata": _image_to_metadata(img),
-            "source": {
-                "url": img.source_url or "",
-                "title": img.source_title,
-                "license": img.license,
-                "photographer": img.photographer,
-                "license_url": img.license_url,
-            },
-            "image_url": f"/images/{iid}/raw",
-            "image_metadata": img.metadata_json or {},
-            "artifacts_json": img.artifacts_json or None,
-            "tags": img.tags or [],
-            "segment": {
-                "id": sid,
-                "label": seg.label,
-                "bbox": [seg.bbox_x, seg.bbox_y, seg.bbox_w, seg.bbox_h],
-                "mask_area_ratio": seg.mask_area_ratio,
-                "crop_url": f"/images/segments/{sid}/crop",
-            },
-        })
-        if len(results) >= k:
-            break
+
+    if store.size > 0:
+        # Oversample: an image contributes up to 12 segments and the query's own
+        # segments must be excluded — k*4 can exhaust after a few parents.
+        seg_ids, scores = store.search(qvec, k * 8)
+        score_by_id = dict(zip(seg_ids, scores))
+
+        seg_uuids = [uuid.UUID(s) for s in seg_ids]
+        rows = (
+            db.query(ImageSegment, ImageModel)
+            .join(ImageModel, ImageSegment.image_id == ImageModel.id)
+            .filter(ImageSegment.id.in_(seg_uuids))
+            .all()
+        )
+        by_seg_id = {str(seg.id): (seg, img) for seg, img in rows}
+
+        for sid in seg_ids:  # FAISS order = descending score
+            entry = by_seg_id.get(sid)
+            if entry is None:
+                continue
+            seg, img = entry
+            if exclude_image is not None and seg.image_id == exclude_image:
+                continue
+            iid = str(img.id)
+            if iid in seen_images:
+                continue
+            seen_images.add(iid)
+            results.append({
+                "building_id": None,
+                "image_id": iid,
+                "score": round(score_by_id[sid], 4),
+                "metadata": _image_to_metadata(img),
+                "source": {
+                    "url": img.source_url or "",
+                    "title": img.source_title,
+                    "license": img.license,
+                    "photographer": img.photographer,
+                    "license_url": img.license_url,
+                },
+                "image_url": f"/images/{iid}/raw",
+                "image_metadata": img.metadata_json or {},
+                "artifacts_json": img.artifacts_json or None,
+                "tags": img.tags or [],
+                "segment": {
+                    "id": sid,
+                    "label": seg.label,
+                    "bbox": [seg.bbox_x, seg.bbox_y, seg.bbox_w, seg.bbox_h],
+                    "mask_area_ratio": seg.mask_area_ratio,
+                    "crop_url": f"/images/segments/{sid}/crop",
+                },
+            })
+            if len(results) >= k:
+                break
+
+    # Fall back to full-image CLIP index when segment results are sparse.
+    if len(results) < k:
+        from app.services.vector_store import get_clip_store
+        clip_store = get_clip_store(settings.embedding_version, settings.faiss_data_dir)
+        if clip_store.size > 0:
+            needed = k - len(results)
+            img_ids, img_scores = clip_store.search(qvec, needed * 4)
+            score_by_img = dict(zip(img_ids, img_scores))
+            img_uuids = [uuid.UUID(iid) for iid in img_ids]
+            img_rows = (
+                db.query(ImageModel)
+                .filter(ImageModel.id.in_(img_uuids))
+                .all()
+            )
+            img_by_id = {str(r.id): r for r in img_rows}
+            for iid in img_ids:
+                if len(results) >= k:
+                    break
+                if iid in seen_images:
+                    continue
+                if exclude_image is not None and iid == str(exclude_image):
+                    continue
+                img = img_by_id.get(iid)
+                if img is None:
+                    continue
+                seen_images.add(iid)
+                results.append({
+                    "building_id": None,
+                    "image_id": iid,
+                    "score": round(score_by_img[iid], 4),
+                    "metadata": _image_to_metadata(img),
+                    "source": {
+                        "url": img.source_url or "",
+                        "title": img.source_title,
+                        "license": img.license,
+                        "photographer": img.photographer,
+                        "license_url": img.license_url,
+                    },
+                    "image_url": f"/images/{iid}/raw",
+                    "image_metadata": img.metadata_json or {},
+                    "artifacts_json": img.artifacts_json or None,
+                    "tags": img.tags or [],
+                    "segment": None,
+                })
 
     return {"results": results, "query": {"label": query_label, "crop_url": query_crop_url}}
 

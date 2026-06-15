@@ -15,7 +15,7 @@ import CollectionsView from './components/CollectionsView';
 import LibraryView from './components/LibraryView';
 import { useSearch } from '@/lib/hooks';
 import type { SearchResultItem } from '@/lib/types';
-import { analyzeEphemeral, getSimilarImages, searchBySegmentCrop, segmentImageFromUrl } from '@/lib/api';
+import { analyzeEphemeral, getSimilarImages, searchBySegmentCrop, searchBySegmentRef, SegmentNotIndexedError, segmentImageFromUrl } from '@/lib/api';
 import type { SegmentObject } from '@/lib/api';
 import architectureStyles from './architecture_styles.json';
 import AssistantChat from './components/AssistantChat';
@@ -614,9 +614,13 @@ export default function HomePage() {
   }, [submitByImage]);
 
   // Component-level search: segment crop → CLIP → similar components.
-  // Opens as an overlay so the segmented detail view stays mounted underneath —
-  // closing returns to the same segmentation to try another region.
-  const handleSegmentSearch = useCallback(async (seg: SegmentObject, excludeImageId?: string) => {
+  // For corpus images, tries indexed-segment ref (no upload) first to avoid
+  // large payload errors; falls back to crop upload for ephemeral/unindexed images.
+  const handleSegmentSearch = useCallback(async (
+    seg: SegmentObject,
+    excludeImageId?: string,
+    refImageId?: string,
+  ) => {
     setSegmentSearch({
       label: seg.class_name,
       cropUrl: seg.crop_data_url,
@@ -625,7 +629,18 @@ export default function HomePage() {
       error: null,
     });
     try {
-      const resp = await searchBySegmentCrop(seg.crop_data_url, 12, excludeImageId);
+      let resp;
+      if (refImageId) {
+        try {
+          resp = await searchBySegmentRef(refImageId, seg.id, 12);
+        } catch (refErr) {
+          if (!(refErr instanceof SegmentNotIndexedError)) throw refErr;
+          // Segments not yet indexed — fall back to crop upload
+          resp = await searchBySegmentCrop(seg.crop_data_url, 12, excludeImageId);
+        }
+      } else {
+        resp = await searchBySegmentCrop(seg.crop_data_url, 12, excludeImageId);
+      }
       setSegmentSearch((prev) => prev ? { ...prev, items: resp.results, loading: false } : prev);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Segment search failed';
@@ -905,12 +920,14 @@ export default function HomePage() {
               favs={favs}
               onFav={toggleFav}
               onOpen={handleOpen}
-              onSegmentSearch={(seg) =>
+              onSegmentSearch={(seg) => {
+                const isEphemeral = view.item.image_id.startsWith('ephemeral-');
                 handleSegmentSearch(
                   seg,
-                  view.item.image_id.startsWith('ephemeral-') ? undefined : view.item.image_id,
-                )
-              }
+                  isEphemeral ? undefined : view.item.image_id,
+                  isEphemeral ? undefined : view.item.image_id,
+                );
+              }}
               segmentChips={
                 view.item.image_id.startsWith('ephemeral-')
                   ? tryoutSegments ?? undefined
