@@ -269,7 +269,7 @@ export interface SegmentSearchResponse {
 }
 
 /** Resize a data URL to fit within maxPx on longest side, returning a JPEG blob. */
-async function resizeCropBlob(dataUrl: string, maxPx = 512): Promise<Blob> {
+async function resizeCropBlob(dataUrl: string, maxPx = 224): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -306,6 +306,10 @@ export async function searchBySegmentCrop(
   return res.json() as Promise<SegmentSearchResponse>;
 }
 
+export class SegmentNotIndexedError extends Error {
+  constructor() { super('Segments not indexed for this image'); }
+}
+
 /** Search similar components from an already-indexed segment reference. */
 export async function searchBySegmentRef(
   imageId: string,
@@ -317,6 +321,7 @@ export async function searchBySegmentRef(
   form.append('segment_index', String(segmentIndex));
   const res = await fetch(`/api/search/by-segment?k=${k}`, { method: 'POST', body: form });
   if (!res.ok) {
+    if (res.status === 404) throw new SegmentNotIndexedError();
     const text = await res.text();
     throw new Error(`Segment search failed (${res.status}): ${text}`);
   }
