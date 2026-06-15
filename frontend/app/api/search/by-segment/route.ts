@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchWithRetry } from '@/lib/fetch-retry';
 
 const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:18001';
 
@@ -6,7 +7,7 @@ export async function POST(req: NextRequest) {
   const k = req.nextUrl.searchParams.get('k') ?? '12';
   try {
     const form = await req.formData();
-    const res = await fetch(`${BACKEND_URL}/api/search/by-segment?k=${k}`, {
+    const res = await fetchWithRetry(`${BACKEND_URL}/api/search/by-segment?k=${k}`, {
       method: 'POST',
       body: form,
     });

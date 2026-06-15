@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchWithRetry } from '@/lib/fetch-retry';
 
 const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:18001';
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const res = await fetch(`${BACKEND_URL}/api/images/analyze-ephemeral`, {
+    const res = await fetchWithRetry(`${BACKEND_URL}/api/images/analyze-ephemeral`, {
       method: 'POST',
       body: formData,
     });

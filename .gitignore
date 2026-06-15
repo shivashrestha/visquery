@@ -93,3 +93,4 @@ backend/fastsam-s/fastsam_s.tflite
 storage/segments/
 storage/documents/
 docs/PROPOSAL.md
+frontend/data/assistant-context.md

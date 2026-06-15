@@ -20,6 +20,18 @@ interface PinterestCardProps {
 function PinterestCard({ result, onClick, onFav, fav, index }: PinterestCardProps) {
   const { metadata, source } = result;
   const title = source.title || metadata.architect;
+  const [imgSrc, setImgSrc] = useState(result.image_url);
+  const retryCount = useRef(0);
+
+  const handleImgError = useCallback(() => {
+    if (retryCount.current < 3 && result.image_url) {
+      retryCount.current += 1;
+      const delay = retryCount.current * 3000;
+      setTimeout(() => {
+        setImgSrc(`${result.image_url}?r=${retryCount.current}`);
+      }, delay);
+    }
+  }, [result.image_url]);
 
   return (
     <motion.article
@@ -30,15 +42,16 @@ function PinterestCard({ result, onClick, onFav, fav, index }: PinterestCardProp
       transition={{ duration: 0.4, delay: Math.min(index * 0.03, 0.3), ease: [0.22, 0.61, 0.36, 1] }}
     >
       <div className="pin-img">
-        {result.image_url ? (
+        {imgSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={result.image_url}
+            src={imgSrc}
             alt={metadata.architect ?? ''}
             loading="lazy"
             decoding="async"
             sizes="(max-width: 500px) 100vw, (max-width: 800px) 50vw, (max-width: 1200px) 33vw, 25vw"
             style={{ width: '100%', height: 'auto', display: 'block' }}
+            onError={handleImgError}
           />
         ) : (
           <div style={{ aspectRatio: '4/3', background: 'var(--bg-soft)' }} />
