@@ -268,19 +268,39 @@ export interface SegmentSearchResponse {
   query: { label: string | null; crop_url: string | null };
 }
 
+/** Resize a data URL to fit within maxPx on longest side, returning a JPEG blob. */
+async function resizeCropBlob(dataUrl: string, maxPx = 512): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('Canvas toBlob failed')), 'image/jpeg', 0.88);
+    };
+    img.onerror = () => reject(new Error('Image load failed'));
+    img.src = dataUrl;
+  });
+}
+
 /** Search similar components from a crop data URL (panel "Find similar"). */
 export async function searchBySegmentCrop(
   cropDataUrl: string,
   k = 12,
   excludeImageId?: string,
 ): Promise<SegmentSearchResponse> {
-  const blob = await (await fetch(cropDataUrl)).blob();
+  const blob = await resizeCropBlob(cropDataUrl, 512);
   const form = new FormData();
   form.append('file', blob, 'crop.jpg');
   if (excludeImageId) form.append('exclude_image_id', excludeImageId);
   const res = await fetch(`/api/search/by-segment?k=${k}`, { method: 'POST', body: form });
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 413) throw new Error('Segment crop too large to search — try a smaller region.');
     throw new Error(`Segment search failed (${res.status}): ${text}`);
   }
   return res.json() as Promise<SegmentSearchResponse>;

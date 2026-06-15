@@ -15,7 +15,10 @@ export async function POST(req: NextRequest) {
     let data: unknown = null;
     try { data = raw ? JSON.parse(raw) : null; }
     catch { data = { error: raw || `Backend error (${res.status})` }; }
-    if (!res.ok) return NextResponse.json(data, { status: res.status });
+    if (!res.ok) {
+      if (res.status === 413) return NextResponse.json({ error: 'Segment crop too large — backend rejected payload.' }, { status: 413 });
+      return NextResponse.json(data, { status: res.status });
+    }
     return NextResponse.json(data);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Segment search proxy error';
