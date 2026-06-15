@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchWithRetry } from '@/lib/fetch-retry';
 
 const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:18001';
 
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
     if (searchParams.get('limit')) params.set('limit', searchParams.get('limit')!);
     if (searchParams.get('sort')) params.set('sort', searchParams.get('sort')!);
 
-    const res = await fetch(`${BACKEND_URL}/api/images?${params.toString()}`, {
+    const res = await fetchWithRetry(`${BACKEND_URL}/api/images?${params.toString()}`, {
       cache: 'no-store',
     });
     const raw = await res.text();

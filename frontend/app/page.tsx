@@ -18,6 +18,7 @@ import type { SearchResultItem } from '@/lib/types';
 import { analyzeEphemeral, getSimilarImages, searchBySegmentCrop, segmentImageFromUrl } from '@/lib/api';
 import type { SegmentObject } from '@/lib/api';
 import architectureStyles from './architecture_styles.json';
+import AssistantChat from './components/AssistantChat';
 
 function shortStyleTag(style: string): string {
   return style
@@ -935,6 +936,9 @@ export default function HomePage() {
           }}
         />
       )}
+
+      {/* ── Assistant Chat — landing page only ── */}
+      <AssistantChat visible={view.name === 'home'} />
 
       {/* ── Analyzing overlay — scanner design ── */}
       <AnimatePresence>
