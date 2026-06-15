@@ -1,21 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { ASSISTANT_SYSTEM_PROMPT } from '@/lib/server/assistant-context';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
-
-function loadSystemPrompt(): string {
-  // Try cwd-relative path first (next start from frontend/), then fallback
-  const candidates = [
-    path.join(process.cwd(), 'data', 'assistant-context.md'),
-    path.join(process.cwd(), 'frontend', 'data', 'assistant-context.md'),
-  ];
-  for (const filePath of candidates) {
-    if (fs.existsSync(filePath)) return fs.readFileSync(filePath, 'utf-8');
-  }
-  throw new Error(`assistant-context.md not found. Tried: ${candidates.join(', ')}`);
-}
 
 export async function POST(req: NextRequest) {
   const { message } = await req.json();
@@ -30,14 +17,6 @@ export async function POST(req: NextRequest) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
-  let systemPrompt: string;
-  try {
-    systemPrompt = loadSystemPrompt();
-  } catch (err) {
-    console.error('[assistant] failed to load context file', err);
-    return NextResponse.json({ error: 'Assistant unavailable' }, { status: 503 });
-  }
-
   try {
     const res = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
@@ -45,7 +24,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model,
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: ASSISTANT_SYSTEM_PROMPT },
           { role: 'user', content: message },
         ],
         stream: false,
