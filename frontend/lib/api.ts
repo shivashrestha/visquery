@@ -328,8 +328,25 @@ export interface PrecedentReport {
 
 export type ReportFocus = 'materials' | 'structure' | 'typology' | 'climate';
 
+async function imageUrlToDataUrl(url: string): Promise<string | null> {
+  if (!url) return null;
+  if (url.startsWith('data:')) return url;
+  if (!url.startsWith('blob:')) return null;
+  try {
+    const blob = await (await fetch(url)).blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Generate a comparative precedent report from selected result items.
+ * Generate a precedent report from one or more result items.
  * Stored images go first, ephemeral (tryout) items after — IMG-n refs follow
  * that order, so callers should map refs against the returned `images` list.
  */
@@ -339,12 +356,19 @@ export async function generatePrecedentReport(
 ): Promise<PrecedentReport> {
   const stored = items.filter((i) => !i.ephemeral_artifacts && !i.image_id.startsWith('ephemeral-'));
   const ephemeral = items.filter((i) => i.ephemeral_artifacts || i.image_id.startsWith('ephemeral-'));
+  const ephemeralItems = await Promise.all(
+    ephemeral.map(async (i) => ({
+      analysis: i.ephemeral_artifacts ?? {},
+      image_data_url: await imageUrlToDataUrl(i.image_url),
+      title: i.metadata.name ?? i.source.title ?? i.image_metadata?.title ?? i.ephemeral_artifacts?.title ?? null,
+    })),
+  );
   const res = await fetch('/api/reports/precedent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       image_ids: stored.map((i) => i.image_id),
-      ephemeral_items: ephemeral.map((i) => i.ephemeral_artifacts ?? {}),
+      ephemeral_items: ephemeralItems,
       focus: focus ?? null,
     }),
   });
@@ -357,6 +381,65 @@ export async function generatePrecedentReport(
 
 export function reportPdfUrl(reportId: string): string {
   return `/api/reports/${reportId}/pdf`;
+}
+
+/**
+ * Generate a single-image precedent report using all available item metadata.
+ * Uses a dedicated backend endpoint with a deep single-image analysis prompt.
+ * Falls back to the multi-image path for ephemeral items.
+ */
+export async function generateSinglePrecedentReport(
+  item: import('./types').SearchResultItem,
+  focus?: ReportFocus,
+): Promise<PrecedentReport> {
+  const meta = item.metadata;
+  const imeta = item.image_metadata ?? {};
+
+  const locationParts = [meta.location_city, meta.location_country].filter(Boolean);
+  const ctx: Record<string, unknown> = {};
+
+  const title =
+    (meta as Record<string, unknown>).name as string | undefined ||
+    item.source.title ||
+    meta.architect ||
+    (imeta.title as string | undefined) ||
+    '';
+  if (title) ctx.title = title;
+  if (meta.architect) ctx.architect = meta.architect;
+  if (meta.year_built) ctx.year_built = meta.year_built;
+  if (locationParts.length) ctx.location = locationParts.join(', ');
+  if ((meta.typology?.length ?? 0) > 0) ctx.building_type = meta.typology![0].replace(/_/g, ' ');
+  if ((meta.materials?.length ?? 0) > 0) ctx.materials = meta.materials;
+  if (meta.structural_system) ctx.structural_system = meta.structural_system.replace(/_/g, ' ');
+  if (meta.climate_zone) ctx.climate_zone = meta.climate_zone.replace(/_/g, ' ');
+
+  const description = meta.description || item.explanation || '';
+  if (description) ctx.description = description;
+  if (item.explanation && item.explanation !== description) ctx.explanation = item.explanation;
+
+  const styleClassified = typeof imeta.architecture_style_classified === 'string'
+    ? imeta.architecture_style_classified : '';
+  if (styleClassified) ctx.style_classified = styleClassified;
+
+  const styleTop = Array.isArray(imeta.architecture_style_top) ? imeta.architecture_style_top : [];
+  if (styleTop.length) ctx.style_top = styleTop;
+
+  const rawText = typeof imeta.raw_text === 'string' ? imeta.raw_text : '';
+  if (rawText) ctx.raw_text = rawText;
+
+  if ((item.tags?.length ?? 0) > 0) ctx.tags = item.tags;
+  if (item.source.photographer) ctx.photographer = item.source.photographer;
+
+  const res = await fetch('/api/reports/single', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_id: item.image_id, metadata_context: ctx, focus: focus ?? null }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Report generation failed (${res.status}): ${text}`);
+  }
+  return res.json() as Promise<PrecedentReport>;
 }
 
 // ── Ask the Archive — RAG chat over ingested documents ───────────────────────

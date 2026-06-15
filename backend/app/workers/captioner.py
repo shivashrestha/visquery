@@ -279,14 +279,90 @@ def extract_image_artifacts(
     return _run_vlm_extraction(image_b64, settings, image_vec, enrich_style, extra_instruction)
 
 
+def _run_gemini_extraction(
+    optimized_bytes: bytes,
+    settings: Any,
+    image_vec: Optional[np.ndarray],
+    enrich_style: bool,
+) -> Optional[dict[str, Any]]:
+    """Extract artifacts via Gemini Flash. Returns None on failure so caller falls back to Ollama."""
+    try:
+        import google.generativeai as genai  # lazy import — optional dependency
+    except ImportError:
+        logger.warning("gemini_package_missing_pip_install_google_generativeai")
+        return None
+
+    api_key = getattr(settings, "gemini_api_key", "") or ""
+    if not api_key:
+        logger.warning("gemini_api_key_not_set")
+        return None
+
+    try:
+        genai.configure(api_key=api_key)
+        gmodel = genai.GenerativeModel("gemini-3.5-flash")
+        pil_img = PILImage.open(io.BytesIO(optimized_bytes)).convert("RGB")
+
+        t0 = time.monotonic()
+        response = gmodel.generate_content([_ARTIFACT_PROMPT, pil_img])
+        elapsed = round(time.monotonic() - t0, 2)
+
+        raw = (response.text or "").strip()
+        logger.info("gemini_inference_done", elapsed_s=elapsed, payload_kb=round(len(optimized_bytes) / 1024))
+        result = _parse_json_safe(raw)
+        result["method"] = "gemini-3.5-flash"
+    except Exception as exc:
+        logger.warning("gemini_extraction_failed_falling_back_to_ollama", error=str(exc))
+        return None
+
+    # CLIP style enrichment (same logic as Ollama path)
+    building_type = result.get("building_type", "")
+    vlm_confidence = float(result.get("style", {}).get("confidence", 0.0) if isinstance(result.get("style"), dict) else 0.0)
+    is_valid_architecture = (
+        building_type
+        and building_type != "not_applicable"
+        and vlm_confidence >= _ARTIFACT_CONFIDENCE_MIN
+    )
+    if enrich_style and image_vec is not None and is_valid_architecture:
+        try:
+            style_vecs = _get_style_vecs()
+            scores = (style_vecs @ image_vec).tolist()
+            ranked = sorted(zip(_ARCHITECTURE_STYLES, scores), key=lambda x: x[1], reverse=True)
+            top = [[s, round(float(sc), 4)] for s, sc in ranked[:3] if sc >= _CLIP_STYLE_MIN_SCORE]
+            if top:
+                if not isinstance(result.get("style"), dict):
+                    result["style"] = {}
+                if not result["style"].get("primary"):
+                    result["style"]["primary"] = top[0][0]
+                if not result["style"].get("confidence"):
+                    result["style"]["confidence"] = round(top[0][1], 4)
+                result["architecture_style_classified"] = top[0][0]
+                result["architecture_style_top"] = top
+        except Exception as exc:
+            logger.warning("style_enrichment_failed", error=str(exc))
+
+    return result
+
+
 def extract_image_artifacts_from_bytes(
     image_bytes: bytes,
     settings: Any,
     image_vec: Optional[np.ndarray] = None,
     enrich_style: bool = True,
 ) -> dict[str, Any]:
-    """Extract artifacts from raw image bytes via VLM (no temp file needed)."""
+    """Extract artifacts from raw image bytes via VLM (no temp file needed).
+
+    When GEMINI_USE=true, routes through Gemini Flash instead of Ollama —
+    faster for the tryout/ephemeral flow. Falls back to Ollama on any error.
+    Ingestion and RAG always use Ollama (extract_image_artifacts path).
+    """
     optimized = _optimize_for_vlm(image_bytes)
+
+    if getattr(settings, "gemini_use", False):
+        result = _run_gemini_extraction(optimized, settings, image_vec, enrich_style)
+        if result is not None:
+            return result
+        logger.info("gemini_fallback_to_ollama")
+
     image_b64 = base64.standard_b64encode(optimized).decode()
     return _run_vlm_extraction(image_b64, settings, image_vec, enrich_style)
 

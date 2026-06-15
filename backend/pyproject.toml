@@ -39,6 +39,7 @@ dependencies = [
     "boto3>=1.34.0",
     "ai-edge-litert>=2.0.0",
     "reportlab>=4.1.0",
+    "google-generativeai>=0.8.0",
 ]
 
 [project.optional-dependencies]

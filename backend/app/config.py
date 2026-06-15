@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # Admin API key — required to access /api/admin/* endpoints
     admin_secret: str = ""
 
+    # Gemini Flash — tryout/ephemeral extraction only, not ingestion/RAG
+    gemini_use: bool = False
+    gemini_api_key: str = ""
+
     # Resend email service
     resend_api: str = ""
 
