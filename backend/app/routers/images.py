@@ -126,14 +126,21 @@ async def list_images(
     skip: int = 0,
     limit: int = 40,
     sort: str = "created_at_desc",
+    image_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    """List indexed images with pagination. Filters by owner when X-Studio-Owner header is present."""
+    """List indexed images with pagination. Filters by owner when X-Studio-Owner header is present.
+
+    image_id: fetch a single image by id, shaped like a search result — used to
+    rehydrate a deep-linked detail view (e.g. /?view=detail&id=...) on page load.
+    """
     from app.workers.ingest_worker import _resolve_storage_path
     owner = request.headers.get("X-Studio-Owner") or None
     q = db.query(Image)
-    if owner:
+    if image_id is not None:
+        q = q.filter(Image.id == image_id)
+    elif owner:
         q = q.filter(Image.owner == owner)
     if sort == "created_at_desc":
         q = q.order_by(Image.created_at.desc())

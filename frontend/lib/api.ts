@@ -1,4 +1,4 @@
-import type { SearchRequest, SearchResponse, Building, FeedbackRequest, UploadResponse, ArchitecturalArtifacts, EphemeralAnalysis } from './types';
+import type { SearchRequest, SearchResponse, Building, FeedbackRequest, UploadResponse, ArchitecturalArtifacts, EphemeralAnalysis, SearchResultItem } from './types';
 
 // Nginx default client_max_body_size is 1 MB. Compress before upload to stay safe.
 const UPLOAD_MAX_BYTES = 900 * 1024; // 900 KB target
@@ -78,6 +78,17 @@ export async function search(req: SearchRequest): Promise<SearchResponse> {
     throw new Error(`Search failed (${res.status}): ${text}`);
   }
   return res.json() as Promise<SearchResponse>;
+}
+
+/** Fetch a single image, shaped as a search result — used to rehydrate a
+ *  deep-linked detail view (?view=detail&id=...) without a prior search. */
+export async function getImageById(imageId: string): Promise<SearchResultItem | null> {
+  const res = await fetch(`/api/images?image_id=${encodeURIComponent(imageId)}&limit=1`, {
+    cache: 'no-store',
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { results: SearchResultItem[] };
+  return data.results[0] ?? null;
 }
 
 export async function getBuilding(id: string): Promise<Building> {
