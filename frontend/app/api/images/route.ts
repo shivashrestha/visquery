@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     if (searchParams.get('skip')) params.set('skip', searchParams.get('skip')!);
     if (searchParams.get('limit')) params.set('limit', searchParams.get('limit')!);
     if (searchParams.get('sort')) params.set('sort', searchParams.get('sort')!);
+    if (searchParams.get('image_id')) params.set('image_id', searchParams.get('image_id')!);
 
     const res = await fetchWithRetry(`${BACKEND_URL}/api/images?${params.toString()}`, {
       cache: 'no-store',
