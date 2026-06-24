@@ -3,7 +3,7 @@
 import type { LucideIcon } from 'lucide-react';
 import { LogOut } from 'lucide-react';
 
-export type StudioSection = 'overview' | 'search' | 'library' | 'sources' | 'account';
+export type StudioSection = 'overview' | 'search' | 'library' | 'sources' | 'documents' | 'account';
 
 export interface StudioNavItem {
   id: StudioSection;

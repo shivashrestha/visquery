@@ -1,0 +1,13 @@
+{
+  "dataset": "D:\\dev\\visquery\\backend\\eval\\datasets\\golden.jsonl",
+  "timestamp": "2026-06-21T18:05:27.474803+00:00",
+  "ks": [
+    5,
+    10,
+    20
+  ],
+  "n_labeled": 0,
+  "n_unlabeled_skipped": 3,
+  "aggregate": {},
+  "per_query": []
+}
