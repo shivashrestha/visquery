@@ -3,20 +3,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Database, FolderOpen, LayoutDashboard, Search as SearchIcon, User as UserIcon,
+  Database, FileText, FolderOpen, LayoutDashboard, Search as SearchIcon, User as UserIcon,
 } from 'lucide-react';
 
-import SearchBar from '../SearchBar';
 import ResultsView from '../ResultsView';
 import LibraryView from '../LibraryView';
 import DetailView from '../DetailView';
 import Header, { type ViewName } from '../Header';
 
-import StudioSidebar, { type StudioNavItem, type StudioSection } from './StudioSidebar';
+import { type StudioNavItem, type StudioSection } from './StudioSidebar';
+import StudioTopbar from './StudioTopbar';
 import StudioOverview from './StudioOverview';
 import StudioAccount from './StudioAccount';
 import StudioLanding, { type StudioUser } from './StudioLanding';
 import SourcesSection from './SourcesSection';
+import StudioDocuments from './StudioDocuments';
 
 import { useSearch } from '@/lib/hooks';
 import type { SearchResultItem } from '@/lib/types';
@@ -29,6 +30,7 @@ const NAV: StudioNavItem[] = [
   { id: 'search',   label: 'Search',   icon: SearchIcon },
   { id: 'library',  label: 'Library',  icon: FolderOpen },
   { id: 'sources',  label: 'Sources',  icon: Database },
+  { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'account',  label: 'Account',  icon: UserIcon },
 ];
 
@@ -141,14 +143,17 @@ function Shell({ user, onLogout }: { user: StudioUser; onLogout: () => void }) {
   const fullbleed =
     view.name === 'detail' ||
     currentSection === 'library' ||
-    currentSection === 'search';
+    currentSection === 'search' ||
+    currentSection === 'documents';
 
   return (
     <div className="vqs-shell-root">
-      <StudioSidebar
+      <StudioTopbar
         nav={NAV}
         activeSection={currentSection}
         onNavigate={goSection}
+        onSearch={handleSearchSubmit}
+        onImageSearch={handleImageSearch}
         user={user}
         onLogout={onLogout}
       />
@@ -179,21 +184,6 @@ function Shell({ user, onLogout }: { user: StudioUser; onLogout: () => void }) {
 
         {currentSection === 'search' && (
           <div className="vqs-search-page">
-            <div className="vqs-search-head vqs-rise">
-              <p className="vqs-eyebrow">Search</p>
-              <h1 className="vqs-serif vqs-search-h1">Search precedents</h1>
-              <p className="vqs-search-sub">
-                Describe a style or upload an image. Searches both your library and the global index.
-              </p>
-              <div className="vqs-search-bar-wrap">
-                <SearchBar
-                  onSearch={handleSearchSubmit}
-                  onImageSearch={handleImageSearch}
-                  loading={search.loading}
-                  large
-                />
-              </div>
-            </div>
             {(search.results || search.loading) ? (
               <div className="vqs-host">
                 <ResultsView
@@ -216,7 +206,7 @@ function Shell({ user, onLogout }: { user: StudioUser; onLogout: () => void }) {
               </div>
             ) : (
               <div className="vqs-search-empty">
-                <p>Type a query or upload an image to begin.</p>
+                <p>Search from the bar above — type a style, or use the image button to search by picture.</p>
                 <div className="vqs-quick-chips" style={{ justifyContent: 'center' }}>
                   {QUICK_STYLES.map((s) => (
                     <button key={s} type="button" className="vqs-chip" onClick={() => handleSearchSubmit(s)}>
@@ -241,6 +231,8 @@ function Shell({ user, onLogout }: { user: StudioUser; onLogout: () => void }) {
         )}
 
         {currentSection === 'sources' && <SourcesSection />}
+
+        {currentSection === 'documents' && <StudioDocuments />}
 
         {currentSection === 'account' && (
           <StudioAccount user={user} onLogout={onLogout} />

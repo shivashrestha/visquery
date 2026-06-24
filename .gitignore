@@ -93,3 +93,11 @@ backend/fastsam-s/fastsam_s.tflite
 storage/segments/
 storage/documents/
 docs/PROPOSAL.md
+
+# eval harness local host overrides
+backend/eval/.env.local
+backend/app/mcp/.env.local
+mcp/
+.mcp.json
+ideas/
+backend/eval/.env.local.example
