@@ -74,7 +74,7 @@ storage/metadata/*
 .env.docker.dev.example
 .env.example
 frontend/.env.local
-blog
+blog/*
 visquery_ingestion
 ingestion/scripts/architecture_styles.json
 ingestion/scripts/scrap-images-wikimedia.py
@@ -101,3 +101,4 @@ mcp/
 .mcp.json
 ideas/
 backend/eval/.env.local.example
+.claude/settings.local.json
