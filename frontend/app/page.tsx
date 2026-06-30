@@ -15,7 +15,7 @@ import CollectionsView from './components/CollectionsView';
 import LibraryView from './components/LibraryView';
 import { useSearch } from '@/lib/hooks';
 import type { SearchResultItem } from '@/lib/types';
-import { analyzeEphemeral, getImageById, getSimilarImages, searchBySegmentCrop, searchBySegmentRef, SegmentNotIndexedError, segmentImageFromUrl } from '@/lib/api';
+import { analyzeEphemeral, getImageById, getSimilarImages, imageUrlToDataUrl, searchBySegmentCrop, searchBySegmentRef, SegmentNotIndexedError, segmentImageFromUrl } from '@/lib/api';
 import type { SegmentObject } from '@/lib/api';
 import architectureStyles from './architecture_styles.json';
 import AssistantChat from './components/AssistantChat';
@@ -115,7 +115,14 @@ function HomePage() {
     if (typeof window === 'undefined') return {};
     try {
       const stored = localStorage.getItem('visquery_favs');
-      return stored ? JSON.parse(stored) : {};
+      const parsed: Record<string, SearchResultItem> = stored ? JSON.parse(stored) : {};
+      // Drop legacy entries saved with a blob: URL — unrecoverable after reload.
+      let changed = false;
+      for (const [k, v] of Object.entries(parsed)) {
+        if (v.image_url?.startsWith('blob:')) { delete parsed[k]; changed = true; }
+      }
+      if (changed) { try { localStorage.setItem('visquery_favs', JSON.stringify(parsed)); } catch {} }
+      return parsed;
     } catch { return {}; }
   });
   const favs = useMemo(() => {
@@ -125,14 +132,30 @@ function HomePage() {
   }, [favItems]);
 
   const toggleFav = useCallback((item: SearchResultItem) => {
-    setFavItems((prev) => {
-      const next = { ...prev };
-      if (next[item.image_id]) {
-        delete next[item.image_id];
-      } else {
-        next[item.image_id] = item;
-      }
+    const persist = (next: Record<string, SearchResultItem>) => {
       try { localStorage.setItem('visquery_favs', JSON.stringify(next)); } catch {}
+    };
+    setFavItems((prev) => {
+      if (prev[item.image_id]) {
+        const next = { ...prev };
+        delete next[item.image_id];
+        persist(next);
+        return next;
+      }
+      // blob: URLs (ephemeral/tryout uploads) die on reload → ERR_FILE_NOT_FOUND
+      // in the "Saved by you" collection. Bake them into a persistent data: URL.
+      if (item.image_url?.startsWith('blob:')) {
+        imageUrlToDataUrl(item.image_url).then((dataUrl) => {
+          setFavItems((cur) => {
+            if (!cur[item.image_id]) return cur; // un-favorited meanwhile
+            const next = { ...cur, [item.image_id]: { ...item, image_url: dataUrl ?? item.image_url } };
+            persist(next);
+            return next;
+          });
+        });
+      }
+      const next = { ...prev, [item.image_id]: item };
+      persist(next);
       return next;
     });
   }, []);
