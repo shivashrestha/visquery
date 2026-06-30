@@ -22,8 +22,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
         --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir .
 
-# Bake CLIP ViT-B/32 weights into image — no runtime download needed
+# Bake CLIP ViT-B/32 + bge-reranker-base weights into image — no runtime download.
+# Runtime sets HF_HUB_OFFLINE=1, so anything not cached here fails to load.
 RUN python -c "import open_clip; open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai'); open_clip.create_model_and_transforms('ViT-B-32-quickgelu', pretrained='openai')" && \
+    python -c "from transformers import AutoModelForSequenceClassification, AutoTokenizer; AutoTokenizer.from_pretrained('BAAI/bge-reranker-base'); AutoModelForSequenceClassification.from_pretrained('BAAI/bge-reranker-base')" && \
     chmod -R 755 /opt/hf-cache
 
 COPY app/ ./app/
