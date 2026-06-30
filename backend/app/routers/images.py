@@ -121,7 +121,7 @@ async def upload_image(
 
 
 @router.get("/images")
-async def list_images(
+def list_images(
     request: Request,
     skip: int = 0,
     limit: int = 40,
@@ -134,8 +134,12 @@ async def list_images(
 
     image_id: fetch a single image by id, shaped like a search result — used to
     rehydrate a deep-linked detail view (e.g. /?view=detail&id=...) on page load.
+
+    Sync def on purpose: the DB queries are blocking, so FastAPI runs this in its
+    threadpool instead of stalling the single-worker event loop (which caused
+    nginx 502s under cold/idle load). No per-row filesystem stat either — that
+    was 40 cold bind-mount stats per call; a missing file just 404s on /raw.
     """
-    from app.workers.ingest_worker import _resolve_storage_path
     owner = request.headers.get("X-Studio-Owner") or None
     q = db.query(Image)
     if image_id is not None:
@@ -156,9 +160,6 @@ async def list_images(
 
     results = []
     for img in images:
-        resolved = _resolve_storage_path(img.storage_path, settings)
-        if not Path(resolved).exists():
-            continue
         results.append({
             "building_id": None,
             "image_id": str(img.id),
@@ -203,12 +204,14 @@ async def get_image_status(image_id: uuid.UUID, db: Session = Depends(get_db)) -
 
 
 @router.get("/images/{image_id}/raw")
-async def get_image_raw(
+def get_image_raw(
     image_id: uuid.UUID,
     request: Request,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Response:
+    # Sync def: blocking disk read + redis/DB calls run in the threadpool, so a
+    # cold bind-mount image read never stalls the single-worker event loop.
     import redis as _redis
     from app.workers.ingest_worker import _resolve_storage_path
 
