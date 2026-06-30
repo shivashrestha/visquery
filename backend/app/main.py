@@ -45,11 +45,49 @@ SEARCH_LATENCY = Histogram(
 CORPUS_SIZE = Gauge("visquery_corpus_images_total", "Number of images in corpus")
 
 
+async def _keep_warm_loop(settings):
+    """Periodically touch models + FAISS so their RAM pages stay resident.
+
+    When the site sits idle the kernel (and WSL2 under Docker Desktop) reclaims
+    these pages, so the next request must re-fault every model weight and the
+    in-RAM FAISS index back from disk/swap — making the first search and image
+    render slow. A cheap dummy inference every few minutes keeps them hot.
+    """
+    import asyncio
+    import numpy as np
+    from app.services.embedder import embed_text, CLIP_EXECUTOR
+    from app.services.text_embedder import embed_text_query, TEXT_EXECUTOR
+    from app.services import reranker
+    from app.services.vector_store import get_clip_store, get_text_store
+
+    interval = 180  # seconds — under the kernel's typical idle-reclaim window
+    loop = asyncio.get_running_loop()
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await loop.run_in_executor(CLIP_EXECUTOR, embed_text, "warm")
+            await loop.run_in_executor(TEXT_EXECUTOR, embed_text_query, "warm")
+            await loop.run_in_executor(None, reranker.warmup)
+            clip_store = get_clip_store(settings.embedding_version, settings.faiss_data_dir)
+            if clip_store.size:
+                vec = np.zeros(512, dtype=np.float32)
+                await loop.run_in_executor(None, clip_store.search, vec, 1)
+            text_store = get_text_store(settings.faiss_data_dir)
+            if text_store.size:
+                tvec = np.zeros(384, dtype=np.float32)
+                await loop.run_in_executor(None, text_store.search, tvec, 1)
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning("keep_warm_failed", error=str(exc))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
     from app.services.embedder import warmup, CLIP_EXECUTOR
     from app.services.text_embedder import warmup as text_warmup, TEXT_EXECUTOR
+    from app.services.reranker import warmup as reranker_warmup
     from app.services.vector_store import get_clip_store, get_text_store
     from app.deps import _get_engine
     from app.models.building import Base
@@ -70,11 +108,14 @@ async def lifespan(app: FastAPI):
     await asyncio.gather(
         loop.run_in_executor(CLIP_EXECUTOR, warmup),
         loop.run_in_executor(TEXT_EXECUTOR, text_warmup),
+        loop.run_in_executor(None, reranker_warmup),
     )
 
     eviction_task = asyncio.create_task(segment.start_eviction_loop())
+    keep_warm_task = asyncio.create_task(_keep_warm_loop(settings))
     yield
     eviction_task.cancel()
+    keep_warm_task.cancel()
 
 
 def create_app() -> FastAPI:

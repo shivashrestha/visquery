@@ -22,6 +22,7 @@ def _get_engine(settings: Settings):
         _engine = create_engine(
             settings.database_url,
             pool_pre_ping=True,
+            pool_recycle=1800,  # drop connections idle >30min before they go stale
             pool_size=2,
             max_overflow=4,
         )
