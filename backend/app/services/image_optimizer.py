@@ -10,6 +10,23 @@ MIN_DIMENSION = 500
 MIN_QUALITY = 40
 
 
+def make_thumbnail(image_bytes: bytes, width: int, quality: int = 75) -> bytes:
+    """Return WebP bytes resized to `width` px (aspect kept). Width clamped 16..2048.
+
+    Used to serve small card/grid thumbnails instead of multi-MB originals —
+    cuts a ~2.4MB original to ~30-80KB so pages with many images load fast.
+    """
+    width = max(16, min(int(width), 2048))
+    pil = PILImage.open(io.BytesIO(image_bytes)).convert("RGB")
+    w, h = pil.size
+    if w > width:
+        scale = width / w
+        pil = pil.resize((width, max(1, round(h * scale))), PILImage.LANCZOS)
+    buf = io.BytesIO()
+    pil.save(buf, "WEBP", quality=max(1, min(int(quality), 100)), method=4)
+    return buf.getvalue()
+
+
 def optimize_for_embedding(image_bytes: bytes) -> PILImage.Image:
     """Return an RGB PIL Image optimized for CLIP embedding.
 

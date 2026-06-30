@@ -207,11 +207,17 @@ async def get_image_status(image_id: uuid.UUID, db: Session = Depends(get_db)) -
 def get_image_raw(
     image_id: uuid.UUID,
     request: Request,
+    w: int | None = None,
+    q: int = 75,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Response:
     # Sync def: blocking disk read + redis/DB calls run in the threadpool, so a
     # cold bind-mount image read never stalls the single-worker event loop.
+    #
+    # w=<px> serves a resized WebP thumbnail (aspect kept), disk-cached. Cards/
+    # grids request small widths so pages with many images don't pull multi-MB
+    # originals — the main cause of slow/blank image grids.
     import redis as _redis
     from app.workers.ingest_worker import _resolve_storage_path
 
@@ -250,7 +256,9 @@ def get_image_raw(
     if not local.exists():
         raise HTTPException(status_code=404, detail="Image not found in storage")
 
-    etag = f'"{sha256}"' if sha256 else None
+    want_thumb = w is not None and w > 0
+    variant = f"-w{int(w)}q{int(q)}" if want_thumb else ""
+    etag = f'"{sha256}{variant}"' if sha256 else None
 
     # Conditional request: return 304 if client has fresh copy
     if etag and request.headers.get("if-none-match") == etag:
@@ -259,6 +267,24 @@ def get_image_raw(
     headers: dict[str, str] = {"Cache-Control": "public, max-age=31536000, immutable"}
     if etag:
         headers["ETag"] = etag
+
+    if want_thumb:
+        from app.services.image_optimizer import make_thumbnail
+
+        # Disk cache keyed by sha+w+q so we encode each variant once.
+        cache_dir = Path(settings.storage_root) / "cache" / "thumbs"
+        key = f"{sha256 or local.stem}{variant}.webp"
+        cache_path = cache_dir / key
+        try:
+            if cache_path.exists():
+                return Response(content=cache_path.read_bytes(), media_type="image/webp", headers=headers)
+            thumb = make_thumbnail(local.read_bytes(), w, q)
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_path.write_bytes(thumb)
+            return Response(content=thumb, media_type="image/webp", headers=headers)
+        except Exception as exc:
+            logger.warning("thumbnail_failed", image_id=image_id_str, width=w, error=str(exc))
+            # Fall through to original on any resize/encode error
 
     return Response(content=local.read_bytes(), media_type=_guess_media_type(local.suffix), headers=headers)
 
