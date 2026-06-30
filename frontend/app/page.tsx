@@ -29,6 +29,7 @@ import {
   EpochStrip,
   TryItOutSection,
 } from './components/home/MarketingSections';
+import { BlogSection, BlogArticleView, type BlogPost } from './components/home/BlogSection';
 
 type AppView =
   | { name: 'home' }
@@ -76,6 +77,7 @@ function HomePage() {
   // Ephemeral tryout result — pinned in ResultsView so it can join precedent reports
   const [tryoutItem, setTryoutItem] = useState<SearchResultItem | null>(null);
   const [theme, setTheme] = useState<'monograph' | 'dark'>('monograph');
+  const [openBlog, setOpenBlog] = useState<BlogPost | null>(null);
 
   const [exampleQueries, setExampleQueries] = useState<{ text: string; style: string }[]>([]);
   const [ticker2Styles, setTicker2Styles] = useState<string[]>([]);
@@ -401,6 +403,7 @@ function HomePage() {
       setSegmentSearch(null);
       setTryoutSegments(null);
       setTryoutItem(null);
+      setOpenBlog(null);
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
@@ -463,8 +466,17 @@ function HomePage() {
       />
 
       <AnimatePresence mode="wait">
+        {/* ── Blog article — full in-page view ── */}
+        {view.name === 'home' && openBlog && (
+          <BlogArticleView
+            key={`blog-${openBlog.id}`}
+            post={openBlog}
+            onBack={() => setOpenBlog(null)}
+          />
+        )}
+
         {/* ── Home / Hero ── */}
-        {view.name === 'home' && (
+        {view.name === 'home' && !openBlog && (
           <motion.main
             key="home"
             className="hero"
@@ -549,6 +561,9 @@ function HomePage() {
 
             {/* Component-level segmentation demo */}
             <SegmentationSection onSearch={handleSearch} />
+
+            {/* Journal — climate & materials blog */}
+            <BlogSection onOpen={setOpenBlog} />
 
             {/* Epoch ledger */}
             <EpochStrip onSearch={handleSearch} />
@@ -685,7 +700,7 @@ function HomePage() {
       )}
 
       {/* ── Assistant Chat — landing page only ── */}
-      <AssistantChat visible={view.name === 'home'} />
+      <AssistantChat visible={view.name === 'home' && !openBlog} />
 
       {/* ── Analyzing overlay — scanner design ── */}
       <AnimatePresence>

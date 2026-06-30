@@ -2,10 +2,16 @@ import type { Metadata } from 'next';
 import './globals.css';
 import CookieConsent from './components/CookieConsent';
 
+const SITE_URL = 'https://visquery.com';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: 'Visquery | Visual Query for Architecture Styles',
+  applicationName: 'Visquery',
   description:
-    'Search architectural precedents by building style, material, form, typology, and more. Powered by visual AI trained on architecture.',
+    'Search architectural precedents by building style, material, form, typology, and more. Powered by visual AI trained on architecture. Read the Visquery Journal on climate, passive cooling, and material-led retrofit.',
+  alternates: { canonical: '/' },
+  category: 'architecture',
   keywords: [
     'architecture',
     'architectural style',
@@ -17,12 +23,73 @@ export const metadata: Metadata = {
     'bauhaus',
     'gothic architecture',
     'deconstructivism',
+    'passive cooling architecture',
+    'heatwave building design',
+    'cool roofs and facades',
+    'building retrofit AI',
+    'thermal mass shading materials',
   ],
+  openGraph: {
+    title: 'Visquery | Visual Query for Architecture Styles',
+    description:
+      'Visual AI for architectural precedent search — plus the Visquery Journal on the 2026 heat dome, passive cooling, and AI-led building retrofit.',
+    type: 'website',
+    siteName: 'Visquery',
+    images: [{ url: '/blog/heat-dome-facade.png' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Visquery | Visual Query for Architecture Styles',
+    description:
+      'Search architectural precedents by style, material, form, and typology — visual AI trained on architecture.',
+    images: ['/blog/heat-dome-facade.png'],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
   icons: {
     icon: [{ url: '/app-logo.png', sizes: '100x100', type: 'image/png' }],
     shortcut: [{ url: '/app-logo.png', sizes: '100x100', type: 'image/png' }],
     apple: [{ url: '/app-logo.png', sizes: '100x100', type: 'image/png' }],
   },
+};
+
+// Sitewide structured data. WebSite + SearchAction makes the site eligible for
+// a Google sitelinks search box; Organization feeds the knowledge panel / logo.
+const SITE_JSON_LD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}/#website`,
+      url: SITE_URL,
+      name: 'Visquery',
+      description: 'Visual query for architecture styles and building precedents.',
+      publisher: { '@id': `${SITE_URL}/#organization` },
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: {
+          '@type': 'EntryPoint',
+          urlTemplate: `${SITE_URL}/?view=results&q={search_term_string}`,
+        },
+        'query-input': 'required name=search_term_string',
+      },
+    },
+    {
+      '@type': 'Organization',
+      '@id': `${SITE_URL}/#organization`,
+      name: 'Visquery',
+      url: SITE_URL,
+      logo: { '@type': 'ImageObject', url: `${SITE_URL}/app-logo.png` },
+    },
+  ],
 };
 
 export default function RootLayout({
@@ -33,6 +100,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_JSON_LD) }}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"

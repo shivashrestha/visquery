@@ -5,7 +5,8 @@
       "Bash(grep -nA15 \"def _resolve_storage_path\" backend/app/workers/ingest_worker.py)",
       "Bash(pip install *)",
       "mcp__plugin_playwright_playwright__browser_resize",
-      "mcp__visquery__filter_search"
+      "mcp__visquery__filter_search",
+      "Bash(npx tsc *)"
     ]
   },
   "enabledMcpjsonServers": [
