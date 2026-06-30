@@ -364,7 +364,7 @@ export interface PrecedentReport {
 
 export type ReportFocus = 'materials' | 'structure' | 'typology' | 'climate';
 
-async function imageUrlToDataUrl(url: string): Promise<string | null> {
+export async function imageUrlToDataUrl(url: string): Promise<string | null> {
   if (!url) return null;
   if (url.startsWith('data:')) return url;
   if (!url.startsWith('blob:')) return null;
