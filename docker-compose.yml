@@ -24,16 +24,20 @@
       redis:
         condition: service_healthy
     restart: unless-stopped
+    # CLIP + bge-text + bge-reranker + in-RAM FAISS all warmed at startup —
+    # 2500M caused idle reclaim/swap, making the first request after idle slow.
+    mem_reservation: 2g
+    mem_swappiness: 0   # never page model/FAISS RAM out during idle
     deploy:
       resources:
         limits:
-          memory: 2500M
+          memory: 4500M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s
 
   worker:
     build:

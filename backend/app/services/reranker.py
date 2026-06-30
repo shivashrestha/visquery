@@ -39,6 +39,23 @@ def _load(model_name: str) -> None:
         logger.info("reranker_ready", model=model_name)
 
 
+def warmup(model_name: str = "BAAI/bge-reranker-base") -> None:
+    """Load weights and run a dummy pair to warm caches — call at startup."""
+    _load(model_name)
+    import torch
+
+    encoded = _tokenizer(
+        [("warmup", "warmup")],
+        padding=True,
+        truncation=True,
+        max_length=512,
+        return_tensors="pt",
+    )
+    with torch.no_grad():
+        _model(**encoded)
+    logger.info("reranker_warmup_complete")
+
+
 class RerankerCandidate(NamedTuple):
     image_id: str
     caption: str
