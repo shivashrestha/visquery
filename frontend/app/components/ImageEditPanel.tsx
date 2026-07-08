@@ -195,7 +195,7 @@ export default function ImageEditPanel({ imageUrl, imageTitle }: ImageEditPanelP
             className="edit-preview-img"
             style={{ filter: cssFilter, transform: cssTransform }}
             onLoad={() => setImageLoaded(true)}
-            crossOrigin="anonymous"
+            crossOrigin={/^https?:/i.test(imageUrl) ? 'anonymous' : undefined}
           />
         </div>
       </div>

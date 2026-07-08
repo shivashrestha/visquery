@@ -99,6 +99,20 @@ export default function ReportView({ items, focus, onClose }: ReportViewProps) {
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
+
+    // Uploaded (ephemeral) images with no extracted artifacts have nothing to
+    // synthesize — sending the raw image anyway hits the nginx body cap (413).
+    // Fail early with a clear message instead.
+    const hasContent = items.some((it) => {
+      if (it.ephemeral_artifacts === undefined && !it.image_id.startsWith('ephemeral-')) return true;
+      const eph = it.ephemeral_artifacts;
+      return !!eph && Object.keys(eph).length > 0;
+    });
+    if (!hasContent) {
+      setError('No artifacts found to generate a report. Try an image with detectable architecture.');
+      return;
+    }
+
     const isSingleStored =
       items.length === 1 &&
       !items[0].ephemeral_artifacts &&

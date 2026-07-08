@@ -1641,6 +1641,21 @@
 }
 .tools-reset:hover { color: var(--ink); }
 
+/* Mobile: anchor tools dropdown as a centered sheet so it never clips off-screen */
+@media (max-width: 640px) {
+  .tools-dropdown {
+    position: fixed;
+    top: auto;
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: 360px;
+    margin: 0 auto;
+    z-index: 300;
+  }
+}
+
 /* Segment Panel */
 .seg-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .seg-panel-head {
@@ -3891,7 +3906,11 @@
 
   /* Hero */
   .hero-above-fold { min-height: calc(100dvh - 255px); }
-  .hero-content { padding: 24px 18px 24px; }
+  .hero-content { padding: 24px 18px 40px; }
+  /* Keep the Try-It dropzone clear of the hero's centered suggest-row on
+     short Android viewports where the dvh jump can pull sections together. */
+  .tryout-section { position: relative; z-index: 1; margin-top: 12px; }
+  .suggest-row { flex-shrink: 0; }
 
   /* Plates */
   .plates-section { padding: 48px 16px 40px; }
@@ -4034,7 +4053,7 @@
   ..hdr { height: 70px; }
   .brand-name { font-size: 17px; }
 
-  .hero-content { padding: 18px 14px 18px; }
+  .hero-content { padding: 18px 14px 32px; }
   .suggest-row { gap: 5px; }
   .suggest-chip .style-tag { display: none; }
 
