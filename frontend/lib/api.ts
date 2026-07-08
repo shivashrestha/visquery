@@ -241,20 +241,41 @@ export interface SegmentResponse {
 export async function segmentImage(imageId: string, model: SegmentModel = 'fastsam'): Promise<SegmentResponse> {
   const res = await fetch(`/api/images/${imageId}/segment?model=${model}`, { method: 'POST' });
   if (!res.ok) {
+    if (res.status === 413) throw new Error('Image too large to segment.');
     const text = await res.text();
     throw new Error(`Segmentation failed (${res.status}): ${text}`);
   }
   return res.json() as Promise<SegmentResponse>;
 }
 
+/** Downscale an image URL to a JPEG blob with longest side <= maxSide. Avoids nginx 413 on big uploads. */
+async function imageUrlToScaledBlob(imageUrl: string, maxSide = 1280): Promise<Blob> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    if (/^https?:/i.test(imageUrl)) el.crossOrigin = 'anonymous';
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error('Could not load image for segmentation'));
+    el.src = imageUrl;
+  });
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * scale);
+  const h = Math.round(img.naturalHeight * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((b) => b ? resolve(b) : reject(new Error('Canvas toBlob failed')), 'image/jpeg', 0.88),
+  );
+}
+
 export async function segmentImageFromUrl(imageUrl: string, model: SegmentModel = 'fastsam'): Promise<SegmentResponse> {
-  const imgRes = await fetch(imageUrl);
-  if (!imgRes.ok) throw new Error('Could not load image for segmentation');
-  const blob = await imgRes.blob();
+  const blob = await imageUrlToScaledBlob(imageUrl);
   const form = new FormData();
   form.append('file', blob, 'image.jpg');
   const res = await fetch(`/api/images/segment-upload?model=${model}`, { method: 'POST', body: form });
   if (!res.ok) {
+    if (res.status === 413) throw new Error('Image too large to segment.');
     const text = await res.text();
     throw new Error(`Segmentation failed (${res.status}): ${text}`);
   }
@@ -409,6 +430,7 @@ export async function generatePrecedentReport(
     }),
   });
   if (!res.ok) {
+    if (res.status === 413) throw new Error('Image too large to generate a report.');
     const text = await res.text();
     throw new Error(`Report generation failed (${res.status}): ${text}`);
   }
@@ -472,6 +494,7 @@ export async function generateSinglePrecedentReport(
     body: JSON.stringify({ image_id: item.image_id, metadata_context: ctx, focus: focus ?? null }),
   });
   if (!res.ok) {
+    if (res.status === 413) throw new Error('Image too large to generate a report.');
     const text = await res.text();
     throw new Error(`Report generation failed (${res.status}): ${text}`);
   }

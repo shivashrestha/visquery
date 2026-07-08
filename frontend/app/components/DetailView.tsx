@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CachedImage from './CachedImage';
-import { ArrowLeft, Heart, MessageSquare, Info, Sparkles, Bot, Layers, Search, Archive, ImageIcon, X, ChevronDown, FileText, Maximize2 } from 'lucide-react';
+import { ArrowLeft, Heart, MessageSquare, Info, Sparkles, Bot, Layers, Search, Archive, ImageIcon, X, ChevronDown, FileText, Maximize2, ScanSearch, Sliders } from 'lucide-react';
 import type { SearchResultItem } from '@/lib/types';
 import type { SegmentObject, ArchiveStatus, ArchiveCitation } from '@/lib/api';
 import BuildingCard from './BuildingCard';
@@ -393,7 +393,11 @@ export default function DetailView({
             </motion.button>
             <ToolsMenu
               activeMode={rightMode}
-              onSelect={setRightMode}
+              onSelect={(mode) => {
+                setRightMode(mode);
+                // On mobile the tool renders inside the right panel — reveal it.
+                if (mode !== 'rag') setMobileTab('chat');
+              }}
             />
           </div>
         </div>
@@ -778,8 +782,13 @@ export default function DetailView({
           className={mobileTab === 'chat' ? 'is-active' : ''}
           onClick={() => setMobileTab('chat')}
         >
-          <MessageSquare size={13} />
-          Ask AI
+          {rightMode === 'segment' ? (
+            <><ScanSearch size={13} /> Segment</>
+          ) : rightMode === 'edit' ? (
+            <><Sliders size={13} /> Edit</>
+          ) : (
+            <><MessageSquare size={13} /> Ask AI</>
+          )}
         </button>
       </div>
 
