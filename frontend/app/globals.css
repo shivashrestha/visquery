@@ -1235,6 +1235,28 @@
 .detail-hero:hover .detail-hero-fs-btn { opacity: 1; }
 .detail-hero-fs-btn:hover { background: rgba(15, 23, 42, 0.85); }
 
+.detail-hero-gs-btn {
+  position: absolute;
+  top: 10px;
+  right: 50px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(15, 23, 42, 0.55);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .15s, background .15s;
+  backdrop-filter: blur(4px);
+}
+.detail-hero:hover .detail-hero-gs-btn { opacity: 1; }
+.detail-hero-gs-btn:hover { background: rgba(15, 23, 42, 0.85); }
+
 /* ── Fullscreen image viewer ── */
 .fs-overlay {
   position: fixed;
