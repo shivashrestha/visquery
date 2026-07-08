@@ -313,6 +313,23 @@ export default function DetailView({
             </motion.div>
           </AnimatePresence>
           <button
+            className="detail-hero-gs-btn"
+            onClick={() => {
+              const src = thumbs[activeImg].image_url;
+              if (!src) return;
+              const abs = src.startsWith('http') ? src : window.location.origin + src;
+              window.open(
+                `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(abs)}`,
+                '_blank',
+                'noopener,noreferrer'
+              );
+            }}
+            title="Search similar images on Google"
+            aria-label="Search similar images on Google"
+          >
+            <ScanSearch size={14} />
+          </button>
+          <button
             className="detail-hero-fs-btn"
             onClick={() => setFsOpen(true)}
             title="View fullscreen"
