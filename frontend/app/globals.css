@@ -4000,6 +4000,14 @@
   .detail-head { grid-template-columns: 1fr; gap: 10px; }
   .detail-head .actions { flex-wrap: wrap; }
 
+  /* Segmentation — let touch scroll reach the controls below the canvas.
+     Canvas background pans vertically; individual pieces keep touch-action:none
+     so drag-to-explode / drag-to-search still works. Cap canvas height so the
+     Explode/Merge controls + region count stay reachable. */
+  .seg-annotated-wrap { -webkit-overflow-scrolling: touch; }
+  .seg-frag-canvas { touch-action: pan-y; }
+  .seg-frag-wrap--compact .seg-frag-canvas { max-height: 40vh; }
+
   /* Mobile tab bar */
   .mobile-tabs {
     display: flex;
