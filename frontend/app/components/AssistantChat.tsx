@@ -2,7 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
+import { Sparkles, X, Send, Loader2, Trash2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -12,9 +14,12 @@ interface Message {
 const SUGGESTIONS = [
   'What is Visquery?',
   'How does image search work?',
-  'What is segment search?',
+  'Are my uploaded images stored?',
   'What styles are covered?',
 ];
+
+const CONTACT_PROFILE_URL = 'https://shiva-shrestha.visquery.com';
+const CONTACT_EMAIL = 'shivashrestha44@gmail.com';
 
 export default function AssistantChat({ visible }: { visible: boolean }) {
   const [open, setOpen] = useState(false);
@@ -80,16 +85,37 @@ export default function AssistantChat({ visible }: { visible: boolean }) {
             {/* Header */}
             <div className="assistant-chat-header">
               <div className="assistant-chat-header-left">
-                <span className="assistant-chat-dot" />
-                <span className="assistant-chat-title">Visquery Assistant</span>
+                <span className="assistant-chat-avatar">
+                  <Sparkles size={13} strokeWidth={1.75} />
+                </span>
+                <div className="assistant-chat-header-text">
+                  <span className="assistant-chat-title">Visquery Assistant</span>
+                  <span className="assistant-chat-subtitle">
+                    <span className="assistant-chat-dot" />
+                    Online — ask about the platform
+                  </span>
+                </div>
               </div>
-              <button
-                className="assistant-chat-close"
-                onClick={() => setOpen(false)}
-                aria-label="Close assistant"
-              >
-                <X size={13} />
-              </button>
+              <div className="assistant-chat-header-actions">
+                {messages.length > 0 && (
+                  <button
+                    className="assistant-chat-icon-btn"
+                    onClick={() => setMessages([])}
+                    aria-label="Clear conversation"
+                    title="Clear conversation"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+                <button
+                  className="assistant-chat-icon-btn"
+                  onClick={() => setOpen(false)}
+                  aria-label="Close assistant"
+                  title="Close"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
 
             {/* Messages */}
@@ -97,7 +123,8 @@ export default function AssistantChat({ visible }: { visible: boolean }) {
               {messages.length === 0 ? (
                 <div className="assistant-chat-welcome">
                   <p className="assistant-chat-welcome-text">
-                    Ask me anything about Visquery — search, image upload, style classification, or segments.
+                    Ask me anything about Visquery — text/image search, style classification, artifact
+                    extraction, segment search, precedent reports, collections, and more.
                   </p>
                   <div className="assistant-chat-suggestions">
                     {SUGGESTIONS.map((s) => (
@@ -117,7 +144,13 @@ export default function AssistantChat({ visible }: { visible: boolean }) {
                     key={i}
                     className={`assistant-chat-msg assistant-chat-msg--${m.role}`}
                   >
-                    {m.content}
+                    {m.role === 'assistant' ? (
+                      <div className="assistant-chat-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      m.content
+                    )}
                   </div>
                 ))
               )}
@@ -156,6 +189,15 @@ export default function AssistantChat({ visible }: { visible: boolean }) {
                 <Send size={13} strokeWidth={1.5} />
               </button>
             </div>
+
+            {/* Footer */}
+            <div className="assistant-chat-footer">
+              <a href={`mailto:${CONTACT_EMAIL}`}>Contact developer</a>
+              <span className="assistant-chat-footer-sep">·</span>
+              <a href={CONTACT_PROFILE_URL} target="_blank" rel="noopener noreferrer">
+                Profile
+              </a>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -190,7 +232,7 @@ export default function AssistantChat({ visible }: { visible: boolean }) {
               transition={{ duration: 0.15 }}
               style={{ display: 'flex', alignItems: 'center' }}
             >
-              <MessageCircle size={19} strokeWidth={1.5} />
+              <Sparkles size={19} strokeWidth={1.5} />
             </motion.span>
           )}
         </AnimatePresence>

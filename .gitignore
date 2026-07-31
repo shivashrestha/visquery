@@ -102,3 +102,5 @@ mcp/
 ideas/
 backend/eval/.env.local.example
 .claude/settings.local.json
+ml/test-api.ipynb
+storage/cache/thumbs/

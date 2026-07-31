@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
           { role: 'user', content: message },
         ],
         stream: false,
-        options: { num_predict: 100, temperature: 0.3 },
+        options: { num_predict: 260, temperature: 0.3 },
       }),
     });
 

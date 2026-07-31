@@ -3,6 +3,7 @@
 import { Suspense, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ShieldCheck } from 'lucide-react';
 import Header, { type ViewName } from './components/Header';
 import VQLogo from './components/VQLogo';
 
@@ -740,6 +741,10 @@ function HomePage() {
                 Vision model extracting style, materials &amp; structural elements
               </p>
               <p className="analyzing-eta">Estimated · 20 – 60 seconds</p>
+              <p className="analyzing-privacy">
+                <ShieldCheck size={11} strokeWidth={1.75} />
+                Not stored, not used for any other purpose
+              </p>
             </motion.div>
           </motion.div>
         )}
