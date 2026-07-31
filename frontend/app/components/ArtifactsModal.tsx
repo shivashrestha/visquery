@@ -43,6 +43,30 @@ function Confidence({ value }: { value: number }) {
   );
 }
 
+/** VLM returns spatial_features as {massing:[], geometry:[], ...} — flatten either shape to tags. */
+function spatialFeatureTags(sf: ArchitecturalArtifacts['spatial_features']): string[] {
+  if (!sf) return [];
+  if (Array.isArray(sf)) return sf;
+  return Object.values(sf).flat().filter((v): v is string => typeof v === 'string');
+}
+
+/** True when the extraction ran but found nothing worth showing (empty tag lists, no style, etc). */
+function hasNoContent(data: ArchitecturalArtifacts): boolean {
+  return (
+    !data.style?.primary &&
+    !(data.style?.secondary?.length) &&
+    !(data.architectural_elements?.structural?.length) &&
+    !(data.architectural_elements?.facade?.length) &&
+    !(data.architectural_elements?.roofing?.length) &&
+    !(data.architectural_elements?.openings?.length) &&
+    !(data.architectural_elements?.ornamental?.length) &&
+    !(data.architectural_elements?.circulation?.length) &&
+    !(data.materials?.length) &&
+    spatialFeatureTags(data.spatial_features).length === 0 &&
+    !(data.relationships?.length)
+  );
+}
+
 function ArtifactsDisplay({ data }: { data: ArchitecturalArtifacts }) {
   return (
     <div className="artifacts-display">
@@ -101,10 +125,10 @@ function ArtifactsDisplay({ data }: { data: ArchitecturalArtifacts }) {
         </Section>
       )}
 
-      {data.spatial_features && data.spatial_features.length > 0 && (
+      {spatialFeatureTags(data.spatial_features).length > 0 && (
         <Section title="Spatial Features">
           <div className="artifact-tag-row">
-            {data.spatial_features.map((f) => <Tag key={f} label={f} />)}
+            {spatialFeatureTags(data.spatial_features).map((f) => <Tag key={f} label={f} />)}
           </div>
         </Section>
       )}
@@ -173,7 +197,13 @@ export default function ArtifactsModal({
     [onClose],
   );
 
-  const isEmpty = artifacts && Object.keys(artifacts).length === 0;
+  const isEmpty =
+    !!artifacts &&
+    (Object.keys(artifacts).length === 0 ||
+      artifacts.building_type === 'not_applicable' ||
+      artifacts.vlm_unavailable === true ||
+      artifacts.parse_error === true ||
+      hasNoContent(artifacts));
 
   return (
     <AnimatePresence>
@@ -229,7 +259,16 @@ export default function ArtifactsModal({
 
               {isEmpty && !loading && (
                 <div className="artifacts-empty">
-                  <p>No artifacts extracted for this image yet.</p>
+                  <p>
+                    {artifacts?.building_type === 'not_applicable'
+                      ? 'No architectural subject detected in this image.'
+                      : artifacts?.vlm_unavailable
+                      ? 'Artifact extraction is temporarily unavailable. Please retry.'
+                      : 'No artifacts extracted for this image yet.'}
+                  </p>
+                  {!skipFetch && (artifacts?.vlm_unavailable || artifacts?.parse_error) && (
+                    <button onClick={load} className="artifacts-retry">Retry</button>
+                  )}
                 </div>
               )}
 

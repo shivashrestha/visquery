@@ -41,12 +41,17 @@ export interface ArchitecturalArtifacts {
   architectural_elements?: {
     structural?: string[];
     facade?: string[];
+    roofing?: string[];
+    openings?: string[];
     ornamental?: string[];
+    circulation?: string[];
   };
   materials?: string[];
-  spatial_features?: string[];
+  spatial_features?: Record<string, string[]> | string[];
   relationships?: ArtifactRelationship[];
   building_type?: string;
+  vlm_unavailable?: boolean;
+  parse_error?: boolean;
 }
 
 export interface SearchResultItem {

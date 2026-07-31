@@ -3,6 +3,10 @@ import { fetchWithRetry } from '@/lib/fetch-retry';
 
 const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:18001';
 
+// VLM artifact extraction routinely takes 45-150s (large cloud vision model) — default
+// Vercel function limits (10-60s) would kill this before the backend ever responds.
+export const maxDuration = 180;
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();

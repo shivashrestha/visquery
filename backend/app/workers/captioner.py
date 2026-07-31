@@ -68,9 +68,6 @@ def _optimize_for_vlm(image_bytes: bytes) -> bytes:
         quality -= 10
 
 
-_GATE_PROMPT = """Does this image contain a building, structure, or any architectural element (interior, exterior, urban space, bridge, monument)?
-Reply with exactly one word: YES or NO."""
-
 _ARTIFACT_PROMPT = """Analyze this architectural image and extract structured artifacts as JSON.
 
 Return exactly this JSON shape (no extra keys, no markdown):
@@ -147,13 +144,18 @@ _CLIP_STYLE_MIN_SCORE = 0.20  # cosine sim floor — below this, style is noise
 _ARTIFACT_CONFIDENCE_MIN = 0.15  # VLM confidence below this → treat as not_applicable
 
 
+_VLM_TIMEOUT_S = 150.0  # gemma4:31b-cloud genuinely takes 45-90s+ for a full artifact extraction;
+# ollama.Client defaults to timeout=None (hangs forever on a truly stuck call) — this bounds it
+# without cutting off legitimate slow responses.
+
+
 def _build_client(settings: Any) -> tuple["Client", str, bool]:
     """Return (client, model, is_local)."""
     local_mode: bool = getattr(settings, "local_mode", False)
     if local_mode:
         base_url = getattr(settings, "local_ollama_base_url", "http://localhost:11434") or "http://localhost:11434"
         model = getattr(settings, "local_model_name", "") or "gemma4:e4b"
-        client = Client(host=base_url)
+        client = Client(host=base_url, timeout=_VLM_TIMEOUT_S)
         logger.info("vlm_local_mode", model=model, base_url=base_url)
     else:
         headers: dict = {}
@@ -161,28 +163,9 @@ def _build_client(settings: Any) -> tuple["Client", str, bool]:
             headers["Authorization"] = f"Bearer {settings.ollama_api_key}"
         base_url = settings.ollama_base_url
         model = settings.ollama_vlm_model
-        client = Client(host=base_url, headers=headers)
+        client = Client(host=base_url, headers=headers, timeout=_VLM_TIMEOUT_S)
         logger.info("vlm_cloud_mode", model=model, base_url=base_url)
     return client, model, local_mode
-
-
-def _is_architecture_image(client: "Client", model: str, image_b64: str) -> bool:
-    """Fast pre-check: does this image contain architectural content?"""
-    try:
-        t0 = time.monotonic()
-        resp = client.chat(
-            model=model,
-            messages=[{"role": "user", "content": _GATE_PROMPT, "images": [image_b64]}],
-            options={"temperature": 0.0, "num_predict": 4, "num_ctx": 1024, "think": False},
-        )
-        answer = (resp.message.content or "").strip().upper()
-        elapsed = round(time.monotonic() - t0, 2)
-        is_arch = answer.startswith("YES")
-        logger.info("vlm_gate_result", answer=answer, is_architecture=is_arch, elapsed_s=elapsed)
-        return is_arch
-    except Exception as exc:
-        logger.warning("vlm_gate_failed_assuming_architecture", error=str(exc))
-        return True  # fail open: run full extraction rather than silently drop
 
 
 def _run_vlm_extraction(
@@ -194,11 +177,10 @@ def _run_vlm_extraction(
 ) -> dict[str, Any]:
     client, model, local_mode = _build_client(settings)
 
-    # ── Subject gate: skip full extraction for non-architecture images ──
-    if not _is_architecture_image(client, model, image_b64):
-        logger.info("vlm_gate_rejected_non_architecture")
-        return {**_EMPTY, "building_type": "not_applicable", "subject_valid": False}
-
+    # Non-architecture rejection is handled inline by _ARTIFACT_PROMPT (sets
+    # building_type=not_applicable) — a separate gate call used to run first,
+    # doubling VLM round-trips (and doubling exposure to a stalled call) for
+    # every request. One call now covers both checks.
     prompt = _ARTIFACT_PROMPT
     if extra_instruction:
         prompt = f"{_ARTIFACT_PROMPT}\n\nADDITIONAL CONTEXT:\n{extra_instruction}"
@@ -218,7 +200,7 @@ def _run_vlm_extraction(
                 "temperature": 0.1,
                 "top_p": 0.9,
                 "think": False,
-                "num_predict": 1024,
+                "num_predict": 2048,  # 1024 was truncating the full artifact schema mid-JSON, failing to parse
                 "num_ctx": 4096,
             },
         )
